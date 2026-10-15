@@ -258,10 +258,15 @@ class MotorControllerNode(Node):
     def destroy_node(self):
         """Cleanup operations when node is destroyed"""
         self.running = False
+
+        # Let pending writes finish before sending the final stop command.
+        for thread in (self.motor_tx_thread, self.imu_tx_thread, self.rx_thread):
+            thread.join(timeout=0.5)
         
-        # Send stop command before closing (only if ROS context is still valid)
+        # Serial does not require a live ROS context. Ctrl+C may already have
+        # shut ROS down, but the physical robot still needs a stop command.
         try:
-            if self.robot and rclpy.ok():
+            if self.robot:
                 stop_command = json.dumps({"T": 1, "L": 0.0, "R": 0.0}) + '\n'
                 self.robot.write(stop_command.encode('utf-8'))
                 self.get_logger().info('Robot stopped')
