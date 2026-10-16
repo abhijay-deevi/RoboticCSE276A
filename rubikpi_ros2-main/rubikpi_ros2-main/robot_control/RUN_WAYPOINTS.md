@@ -1,60 +1,48 @@
-# Run the waypoint controller
+# Run the hardcoded route
 
-Run these commands on the rover's Linux/ROS 2 system. From your ROS workspace
-(the directory containing `src`), build and source the package:
+On the robot, build from your ROS workspace directory:
 
 ```bash
 source /opt/ros/humble/setup.bash
 colcon build --packages-select robot_control --symlink-install
 source install/setup.bash
+ros2 run robot_control motor_control --ros-args -p run_waypoints:=true
 ```
 
-Use the setup script for your installed ROS distribution if it is not Humble.
-The existing motor driver expects the robot at `/dev/ttyUSB0` with baud 115200.
+Use your installed ROS distribution if it is not Humble. The existing motor
+driver expects `/dev/ttyUSB0`. Do not run keyboard control at the same time.
 
-Place the robot at (0, 0) facing positive x. Its first valid IMU reading defines
-zero heading. Start the controller with the absolute path to your waypoint file:
+Place the robot at (0,0), facing positive x, before running. It starts immediately.
+Ctrl+C stops the program and the motor driver
+sends a final stop command.
 
-```bash
-ros2 launch robot_control robot_waypoints_launch.py \
-  waypoints_file:=/absolute/path/to/waypoints.txt
-```
+The route is explicitly written in `run_route()` in the template's existing
+`robot_control/motor_control.py`. It matches the current seven homework
+waypoints, moving along x, then y, then turning to the requested angle.
+It does not read `waypoints.txt`; edit the route if the assignment's points change.
 
-This launches the motor driver and waypoint controller together. Do not also run
-the keyboard controller; it publishes to the same motor command topic. The robot
-starts once valid IMU data arrives. Ctrl+C shuts down both processes and the
-motor driver sends a stop command.
+Running without `-p run_waypoints:=true` keeps the original manual-control
+behavior. There is no separate waypoint node or autonomous launch file.
 
-## Calibration values
+Before the full run, calibrate the constants at the top of `motor_control.py`:
 
-The defaults are trial values, not measured properties of your robot:
+- `DRIVE_COMMAND`: straight-driving motor command (trial default 0.20).
+- `DRIVE_SPEED`: actual measured m/s at that command (unmeasured default 0.20).
+  Measure distance/time in a straight-motion trial and replace this value.
+- `TURN_COMMAND`: fixed command for turning in place (trial default 0.08).
+- `TURN_RATE`: actual measured rad/s at TURN_COMMAND (unmeasured default 0.80).
+  Measure a turn angle divided by its duration and replace this value.
 
-| Parameter | Default | Meaning |
-| --- | --- | --- |
-| `wheel_spacing` | 0.20 | Left-to-right wheel path separation, meters; effective value can differ during skid turns. |
-| `left_speed_scale` | 1.0 | Estimated left ground speed divided by left motor command. |
-| `right_speed_scale` | 1.0 | Estimated right ground speed divided by right motor command. |
-| `imu_yaw_sign` | 1.0 | Set to -1.0 if the reported heading decreases during a physical counterclockwise turn. |
+The kinematic model uses distance = speed * time for drives and
+turn angle = turn rate * time for turns. `move()` repeats fixed left/right
+commands until that time has elapsed, then stops. Commands repeat every 0.05
+seconds because the template driver stops after 0.15 seconds without a command.
 
-For straight travel, measure distance divided by time to obtain actual speed.
-Divide speed by the motor command to estimate a speed scale. Check left/right
-imbalance with additional trials. Verify turns, IMU direction, and the smallest
-commands that reliably move the robot. Ground conditions affect calibration.
+The route does not use IMU feedback, position checks, or heading corrections.
+`self.heading` records the direction we assume the robot reached. The template
+still publishes IMU data for other uses. Slip, motor imbalance, and acceleration
+cause errors, so calibrate both speeds and verify the physical run.
 
-Pass your measured values with launch arguments, for example
-`wheel_spacing:=YOUR_MEASURED_VALUE`, `left_speed_scale:=YOUR_MEASURED_VALUE`,
-and `right_speed_scale:=YOUR_MEASURED_VALUE` on the launch command above.
-
-The controller moves along x, then y, then aligns to each waypoint angle. It runs
-at 20 Hz and defaults to 0.12 m/s maximum forward speed, 0.6 rad/s maximum turn
-rate, 0.05 m tolerance per coordinate, and 0.087 rad heading tolerance. Additional
-parameters and their defaults are near the top of `robot_control/waypoint_control.py`.
-
-Position is estimated from commanded motor speeds and IMU heading. There is no
-independent x/y measurement, so slip and motor calibration errors accumulate.
-Completion messages report estimated poses, not verified physical positions.
-Test a short route first and measure actual errors before the complete run.
-
-No IMU at startup, stale IMU data, a missed motor-command deadline, or a waypoint
-taking over 120 seconds causes a latched stop. Fix the issue, return the robot to
-the starting pose, and restart the launch to try again.
+`turn(angle)` subtracts the assumed current heading from the target heading.
+Positive differences turn left; negative differences turn right. It does not
+choose the shortest rotation, so some turns can exceed half a revolution.

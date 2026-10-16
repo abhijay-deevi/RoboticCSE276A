@@ -10,6 +10,13 @@ import threading
 import numpy as np
 import math
 
+# Hardcoded route calibration. Measure DRIVE_SPEED at DRIVE_COMMAND on the robot.
+DRIVE_COMMAND = 0.20
+DRIVE_SPEED = 0.20       # Trial value in m/s, not a measured speed.
+TURN_COMMAND = 0.08
+TURN_RATE = 0.80       # Trial rad/s at TURN_COMMAND. Measure this too.
+
+
 def euler_to_quaternion(roll, pitch, yaw):
     """
     Convert Euler angles (roll, pitch, yaw) in degrees to quaternion
@@ -46,14 +53,19 @@ def euler_to_quaternion(roll, pitch, yaw):
 class MotorControllerNode(Node):
     def __init__(self):
         super().__init__('motor_controller_node')
+        self.declare_parameter('run_waypoints', False)
+        self.run_waypoints = self.get_parameter('run_waypoints').value
+        self.heading = 0.0
         
-        # create subscription to motor commands
-        self.subscription = self.create_subscription(
-            Float32MultiArray,
-            'motor_commands',
-            self.motor_command_callback,
-            10
-        )
+        # Autonomous mode writes commands directly; keyboard input is manual only.
+        self.subscription = None
+        if not self.run_waypoints:
+            self.subscription = self.create_subscription(
+                Float32MultiArray,
+                'motor_commands',
+                self.motor_command_callback,
+                10
+            )
         
         # create publisher for IMU data
         self.imu_publisher = self.create_publisher(Imu, 'imu_data', 10)
@@ -226,7 +238,6 @@ class MotorControllerNode(Node):
             roll = float(imu_data.get('r', 0))    # degrees
             pitch = float(imu_data.get('p', 0))   # degrees  
             yaw = float(imu_data.get('y', 0))     # degrees
-            
             # convert to quaternion
             qw, qx, qy, qz = euler_to_quaternion(roll, pitch, yaw)
     
@@ -255,6 +266,78 @@ class MotorControllerNode(Node):
         except Exception as e:
             self.get_logger().error(f'Error processing IMU data: {str(e)}')
     
+    def send(self, left, right):
+        message = Float32MultiArray()
+        message.data = [float(left), float(right)]
+        self.motor_command_callback(message)
+
+    def move(self, left, right, seconds):
+        """Keep sending a motor command for the requested number of seconds."""
+        end = time.monotonic() + seconds
+        while rclpy.ok() and time.monotonic() < end:
+            self.send(left, right)
+            time.sleep(0.05)  # Refresh commands before the template's timeout.
+        if rclpy.ok():
+            self.send(0.0, 0.0)
+
+    def turn(self, angle):
+        """Face a heading using a timed turn; heading is assumed, not measured."""
+        difference = angle - self.heading
+        seconds = abs(difference) / TURN_RATE
+        if difference > 0:
+            self.move(-TURN_COMMAND, TURN_COMMAND, seconds)
+        else:
+            self.move(TURN_COMMAND, -TURN_COMMAND, seconds)
+        self.heading = angle
+
+    def drive(self, distance):
+        """Distance = speed * time, so driving time = distance / speed."""
+        # Differential-drive model: v=(vR+vL)/2, omega=(vR-vL)/wheel_spacing.
+        # dx/dt=v*cos(heading), dy/dt=v*sin(heading), dtheta/dt=omega.
+        self.move(DRIVE_COMMAND, DRIVE_COMMAND, distance / DRIVE_SPEED)
+
+    def run_route(self):
+        """Hardcoded movements for the seven homework waypoints."""
+        self.get_logger().info('Starting timed route from (0,0), facing +x.')
+        # Waypoint 1: (0, 0, 0). This is where we physically start.
+        self.turn(0.0)
+
+        # Waypoint 2: (1, 0, 0). Move +x by 1 meter.
+        self.turn(0.0)
+        self.drive(1.0)
+        self.turn(0.0)
+
+        # Waypoint 3: (1, 1, 1.57). Move +y by 1 meter.
+        self.turn(math.pi / 2)
+        self.drive(1.0)
+        self.turn(1.57)
+
+        # Waypoint 4: (2, 1, 0). Move +x by 1 meter.
+        self.turn(0.0)
+        self.drive(1.0)
+        self.turn(0.0)
+
+        # Waypoint 5: (2, 2, -1.57). Move +y, then face -y.
+        self.turn(math.pi / 2)
+        self.drive(1.0)
+        self.turn(-1.57)
+
+        # Waypoint 6: (1, 1, -0.78). Move -x, then -y.
+        self.turn(math.pi)
+        self.drive(1.0)
+        self.turn(-math.pi / 2)
+        self.drive(1.0)
+        self.turn(-0.78)
+
+        # Waypoint 7: (0, 0, 0). Move -x, then -y, then face +x.
+        self.turn(math.pi)
+        self.drive(1.0)
+        self.turn(-math.pi / 2)
+        self.drive(1.0)
+        self.turn(0.0)
+        self.send(0.0, 0.0)
+        self.get_logger().info('Hardcoded route finished. Motors stopped.')
+
     def destroy_node(self):
         """Cleanup operations when node is destroyed"""
         self.running = False
@@ -288,7 +371,10 @@ def main(args=None):
     rclpy.init(args=args)
     node = MotorControllerNode()
     try:
-        rclpy.spin(node)
+        if node.run_waypoints:
+            node.run_route()
+        else:
+            rclpy.spin(node)
     except KeyboardInterrupt:
         pass
     finally:
@@ -301,7 +387,6 @@ def main(args=None):
                 rclpy.shutdown()
             except Exception:
                 pass
-        return 0
 
 if __name__ == '__main__':
     main()
