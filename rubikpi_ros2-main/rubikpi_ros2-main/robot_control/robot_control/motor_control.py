@@ -12,9 +12,14 @@ import math
 
 # Hardcoded route calibration. Measure DRIVE_SPEED at DRIVE_COMMAND on the robot.
 DRIVE_COMMAND = 0.20
-DRIVE_SPEED = 0.20       # Trial value in m/s, not a measured speed.
-TURN_COMMAND = 0.08
-TURN_RATE = 0.80       # Trial rad/s at TURN_COMMAND. Measure this too.
+DRIVE_SPEED = 0.2143     # Measured m/s at DRIVE_COMMAND
+TURN_COMMAND = 0.30
+LEFT_TURN_RATE = 1.75   # rad/s, preliminary gyro-based estimate
+RIGHT_TURN_RATE = 1.72  # rad/s, preliminary gyro-based estimate
+
+LEFT_45_TURN_RATE = 1.7
+RIGHT_45_TURN_RATE = 1.4
+
 
 
 def euler_to_quaternion(roll, pitch, yaw):
@@ -281,13 +286,56 @@ class MotorControllerNode(Node):
             self.send(0.0, 0.0)
 
     def turn(self, angle):
-        """Face a heading using a timed turn; heading is assumed, not measured."""
-        difference = angle - self.heading
-        seconds = abs(difference) / TURN_RATE
-        if difference > 0:
-            self.move(-TURN_COMMAND, TURN_COMMAND, seconds)
-        else:
-            self.move(TURN_COMMAND, -TURN_COMMAND, seconds)
+        """Turn using 45- and 90-degree segments."""
+
+        difference = math.atan2(
+            math.sin(angle - self.heading),
+            math.cos(angle - self.heading)
+        )
+
+        remaining = abs(math.degrees(difference))
+
+        if remaining < 1.0:
+            self.heading = angle
+            return
+
+        direction = 1 if difference > 0 else -1
+        turn_name = "LEFT" if direction > 0 else "RIGHT"
+
+        while remaining >= 1.0:
+
+            if remaining > 67.5:
+                segment = min(90.0, remaining)
+
+                if direction > 0:
+                    rate = LEFT_TURN_RATE
+                else:
+                    rate = RIGHT_TURN_RATE
+
+            else:
+                segment = min(45.0, remaining)
+
+                if direction > 0:
+                    rate = LEFT_45_TURN_RATE
+                else:
+                    rate = RIGHT_45_TURN_RATE
+
+            seconds = math.radians(segment) / rate
+
+            self.get_logger().info(
+                f"Turning {turn_name} {segment:.1f} degrees"
+            )
+
+            if direction > 0:
+                self.move(-TURN_COMMAND, TURN_COMMAND, seconds)
+            else:
+                self.move(TURN_COMMAND, -TURN_COMMAND, seconds)
+
+            remaining -= segment
+
+            self.send(0.0, 0.0)
+            time.sleep(0.3)
+
         self.heading = angle
 
     def drive(self, distance):
