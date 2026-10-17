@@ -11,11 +11,11 @@ import numpy as np
 import math
 
 # Hardcoded route calibration. Measure DRIVE_SPEED at DRIVE_COMMAND on the robot.
-DRIVE_COMMAND = 0.20
-DRIVE_SPEED = 0.2143     # Measured m/s at DRIVE_COMMAND
-TURN_COMMAND = 0.30
-LEFT_TURN_RATE = 1.75   # rad/s, preliminary gyro-based estimate
-RIGHT_TURN_RATE = 1.72  # rad/s, preliminary gyro-based estimate
+DRIVE_COMMAND = 0.20 # value to go straight
+DRIVE_SPEED = 0.2143     # Measured m/s at DRIVE_COMMAND (just the forward speed)
+TURN_COMMAND = 0.30 #magnitude when turning
+LEFT_TURN_RATE = 1.75   # rad/s, preliminary gyro-based estimate (estimated turning speed for left turn)
+RIGHT_TURN_RATE = 1.72  # rad/s, preliminary gyro-based estimate (for right)
 
 LEFT_45_TURN_RATE = 1.7
 RIGHT_45_TURN_RATE = 1.4
@@ -271,23 +271,25 @@ class MotorControllerNode(Node):
         except Exception as e:
             self.get_logger().error(f'Error processing IMU data: {str(e)}')
     
-    def send(self, left, right):
-        message = Float32MultiArray()
-        message.data = [float(left), float(right)]
-        self.motor_command_callback(message)
+    # the point of this func is to send commands to robot
+    def send(self, left, right): 
+        message = Float32MultiArray() # msg container 
+        message.data = [float(left), float(right)] # storage of the data
+        self.motor_command_callback(message) # processes the data
 
+    # determines how long to send commands for, and how much for left and right wheels. 
     def move(self, left, right, seconds):
         """Keep sending a motor command for the requested number of seconds."""
-        end = time.monotonic() + seconds
-        while rclpy.ok() and time.monotonic() < end:
+        end = time.monotonic() + seconds # figures out the end time for the move
+        while rclpy.ok() and time.monotonic() < end: # repeat whatever command is given until the time runs out
             self.send(left, right)
             time.sleep(0.05)  # Refresh commands before the template's timeout.
-        if rclpy.ok():
+        if rclpy.ok(): # if ros is still running, then stop both motors
             self.send(0.0, 0.0)
 
     def turn(self, angle):
         """Turn using 45- and 90-degree segments."""
-
+        # gets the shortest distance to turn
         difference = math.atan2(
             math.sin(angle - self.heading),
             math.cos(angle - self.heading)
@@ -319,14 +321,16 @@ class MotorControllerNode(Node):
                     rate = LEFT_45_TURN_RATE
                 else:
                     rate = RIGHT_45_TURN_RATE
-
+            # this is the kinematic part where the turning becomes time 
+            # angle = speed * time --> time = angle/speed
             seconds = math.radians(segment) / rate
 
             self.get_logger().info(
                 f"Turning {turn_name} {segment:.1f} degrees"
             )
 
-            if direction > 0:
+            # 
+            if direction > 0: # picks which way to turn 
                 self.move(-TURN_COMMAND, TURN_COMMAND, seconds)
             else:
                 self.move(TURN_COMMAND, -TURN_COMMAND, seconds)
@@ -339,34 +343,29 @@ class MotorControllerNode(Node):
         self.heading = angle
 
     def drive(self, distance):
-        """Distance = speed * time, so driving time = distance / speed."""
-        # Differential-drive model: v=(vR+vL)/2, omega=(vR-vL)/wheel_spacing.
-        # dx/dt=v*cos(heading), dy/dt=v*sin(heading), dtheta/dt=omega.
+        # equal wheels commands is going forward straight
+        #distance = forward speed * time --> turns into time = distance / speed
+        # so using that time to tell how much to drive forward
         self.move(DRIVE_COMMAND, DRIVE_COMMAND, distance / DRIVE_SPEED)
 
     def run_route(self):
-        """Hardcoded movements for the seven homework waypoints."""
         self.get_logger().info('Starting timed route from (0,0), facing +x.')
-        # Waypoint 1: (0, 0, 0). This is where we physically start.
         self.turn(0.0)
 
-        # Waypoint 2: (1, 0, 0). Move +x by 1 meter.
         self.turn(0.0)
         self.drive(1.0)
         self.turn(0.0)
 
-        # Waypoint 3: (1, 1, 1.57). Move +y by 1 meter.
-        self.turn(math.pi / 2)
+        self.turn(1.57)
         self.drive(1.0)
         self.turn(1.57)
 
-        # Waypoint 4: (2, 1, 0). Move +x by 1 meter.
         self.turn(0.0)
         self.drive(1.0)
         self.turn(0.0)
 
         # Waypoint 5: (2, 2, -1.57). Move +y, then face -y.
-        self.turn(math.pi / 2)
+        self.turn(1.57)
         self.drive(1.0)
         self.turn(-1.57)
 
@@ -378,9 +377,9 @@ class MotorControllerNode(Node):
         self.turn(-0.78)
 
         # Waypoint 7: (0, 0, 0). Move -x, then -y, then face +x.
-        self.turn(math.pi)
+        self.turn(3.14)
         self.drive(1.0)
-        self.turn(-math.pi / 2)
+        self.turn(-1.57)
         self.drive(1.0)
         self.turn(0.0)
         self.send(0.0, 0.0)
