@@ -279,7 +279,6 @@ class MotorControllerNode(Node):
 
     # determines how long to send commands for, and how much for left and right wheels. 
     def move(self, left, right, seconds):
-        """Keep sending a motor command for the requested number of seconds."""
         end = time.monotonic() + seconds # figures out the end time for the move
         while rclpy.ok() and time.monotonic() < end: # repeat whatever command is given until the time runs out
             self.send(left, right)
@@ -295,18 +294,19 @@ class MotorControllerNode(Node):
             math.cos(angle - self.heading)
         )
 
-        remaining = abs(math.degrees(difference))
+        remaining = abs(math.degrees(difference)) # turns to positive degrees
 
-        if remaining < 1.0:
+        if remaining < 1.0: # if the turns r too small then don't do it
             self.heading = angle
             return
-
+        # picks the direction
         direction = 1 if difference > 0 else -1
         turn_name = "LEFT" if direction > 0 else "RIGHT"
 
+        # this basiaclly keeps turning it until 1 degree is left
         while remaining >= 1.0:
 
-            if remaining > 67.5:
+            if remaining > 67.5: # chooses up to 90 degrees  and then selects either left or right
                 segment = min(90.0, remaining)
 
                 if direction > 0:
@@ -315,7 +315,7 @@ class MotorControllerNode(Node):
                     rate = RIGHT_TURN_RATE
 
             else:
-                segment = min(45.0, remaining)
+                segment = min(45.0, remaining) # same with this except turning max 45 degrees
 
                 if direction > 0:
                     rate = LEFT_45_TURN_RATE
@@ -330,15 +330,15 @@ class MotorControllerNode(Node):
             )
 
             # 
-            if direction > 0: # picks which way to turn 
+            if direction > 0: # turns it
                 self.move(-TURN_COMMAND, TURN_COMMAND, seconds)
             else:
                 self.move(TURN_COMMAND, -TURN_COMMAND, seconds)
 
-            remaining -= segment
+            remaining -= segment # continue the loop
 
             self.send(0.0, 0.0)
-            time.sleep(0.3)
+            time.sleep(0.3) # stops for a second before checking if it needs to turn again
 
         self.heading = angle
 
