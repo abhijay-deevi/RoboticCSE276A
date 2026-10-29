@@ -1,4 +1,4 @@
-"""HW2: starts camera, AprilTag detector, motor driver and localization.
+"""HW2: starts camera, AprilTag detector, and motor driver.
 
 Start waypoint_control separately once the robot is placed at (0, 0) facing +x.
 """
@@ -25,6 +25,5 @@ def generate_launch_description():
                     ('camera_info', '/camera/camera_info')])
 
     motor = Node(package='robot_control', executable='motor_control', output='screen')
-    localization = Node(package='robot_control', executable='localization', output='screen')
 
-    return LaunchDescription([camera, apriltag, motor, localization])
+    return LaunchDescription([camera, apriltag, motor])
