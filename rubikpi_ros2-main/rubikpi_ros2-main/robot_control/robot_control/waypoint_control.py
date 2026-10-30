@@ -7,14 +7,20 @@ Localization (whenever the camera sees tags):
   - work backwards to where the robot must be, average over all visible tags,
     and replace our pose estimate with it
 
+  - tags are ignored while spinning in place (blurry images, delayed detections)
+
 Control loop (every 0.05 s):
+  0. wait until the camera is publishing detections, then a few more seconds
   1. dead reckoning: move our pose estimate using the speed we last commanded
      (this keeps us going when no tag is visible)
-  2. log the pose to trajectory.csv
+  2. log the pose to ~/trajectory.csv
   3. compare the pose to the current waypoint and pick a speed (v) and turn rate (w)
+     At a waypoint: stop, pause so the camera gets clean looks, re-check, then
+     record the estimated pose to ~/waypoints.csv and move on.
   4. convert (v, w) to left/right wheel commands and publish them on motor_commands
 
-Run motor_control WITHOUT run_waypoints:=true so it listens on motor_commands.
+Started by hw2_launch.py, which runs motor_control WITHOUT run_waypoints:=true
+so it listens on motor_commands.
 """
 
 import math
@@ -41,6 +47,8 @@ POSITION_TOLERANCE = 0.05  # meters: close enough to a waypoint
 ANGLE_TOLERANCE = 0.1      # radians (~6 deg): close enough to a heading
 DRIVE_ANGLE_LIMIT = 0.3    # radians: if pointing further off than this, turn in place first
 HEADING_GAIN = 1.0         # P gain: how hard to steer back toward the waypoint while driving
+START_DELAY = 3.0          # seconds to wait after the camera is up before driving
+WAYPOINT_PAUSE = 2.0       # seconds to stop at each waypoint (shows clearly in the video)
 
 TURN_RATE = (LEFT_TURN_RATE + RIGHT_TURN_RATE) / 2  # rad/s when turning in place
 DT = 0.05                                            # control loop period (s)
@@ -60,6 +68,10 @@ class WaypointControl(Node):
         self.x, self.y, self.theta = 0.0, 0.0, 0.0
         self.v, self.w = 0.0, 0.0  # last commanded speed (m/s) and turn rate (rad/s)
         self.waypoint_index = 0
+        self.camera_up_time = None  # when the first /detections message arrived
+        self.started = False
+        self.pause_until = 0.0      # stopped at a waypoint until this time
+        self.paused_here = False    # already paused at the current waypoint?
 
         # Load the tag map: {tag_id: {'x': .., 'y': .., 'yaw': ..}}
         map_file = os.path.join(get_package_share_directory('robot_control'),
@@ -75,15 +87,23 @@ class WaypointControl(Node):
         self.motor_pub = self.create_publisher(Float32MultiArray, 'motor_commands', 10)
 
         self.start_time = time.time()
-        self.log = open('trajectory.csv', 'w')
+        self.log = open(os.path.expanduser('~/trajectory.csv'), 'w')
         self.log.write('time,x,y,theta\n')
+        self.waypoint_log = open(os.path.expanduser('~/waypoints.csv'), 'w')
+        self.waypoint_log.write('goal_x,goal_y,goal_theta,est_x,est_y,est_theta\n')
 
         self.timer = self.create_timer(DT, self.loop)
-        self.get_logger().info(f'Waypoint control started, {len(self.tag_map)} tags in map')
+        self.get_logger().info(f'Waypoint control ready, {len(self.tag_map)} tags in map. '
+                               'Waiting for camera...')
 
     # ---------------- Localization ----------------
 
     def on_detections(self, msg):
+        if self.camera_up_time is None:
+            self.camera_up_time = time.time()
+        if self.v == 0.0 and self.w != 0.0:
+            return  # spinning in place: images are blurry, trust dead reckoning
+
         estimates = []  # one (x, y, theta) guess per visible tag
         for det in msg.detections:
             if det.id not in self.tag_map:
@@ -139,6 +159,16 @@ class WaypointControl(Node):
     # ---------------- Control ----------------
 
     def loop(self):
+        # 0. Wait for the camera, then give it a few seconds to see a tag
+        if not self.started:
+            self.drive(0.0, 0.0)
+            if self.camera_up_time is None or time.time() - self.camera_up_time < START_DELAY:
+                return
+            self.started = True
+            self.start_time = time.time()
+            self.get_logger().info(f'GO! Starting pose x={self.x:.3f} y={self.y:.3f} '
+                                   f'theta={self.theta:.3f}')
+
         # 1. Dead reckoning: move the estimate by what we commanded during the last DT
         self.x += self.v * math.cos(self.theta) * DT
         self.y += self.v * math.sin(self.theta) * DT
@@ -151,12 +181,17 @@ class WaypointControl(Node):
             self.drive(0.0, 0.0)  # done: stay stopped
             return
 
+        if time.time() < self.pause_until:
+            self.drive(0.0, 0.0)  # stopped at a waypoint, camera is correcting the pose
+            return
+
         # 3. Controller: compare pose to the waypoint
         goal_x, goal_y, goal_theta = WAYPOINTS[self.waypoint_index]
         distance = math.hypot(goal_x - self.x, goal_y - self.y)
 
         if distance > POSITION_TOLERANCE:
             # Not there yet: point at the waypoint, then drive to it
+            self.paused_here = False
             angle_error = wrap(math.atan2(goal_y - self.y, goal_x - self.x) - self.theta)
             if abs(angle_error) > DRIVE_ANGLE_LIMIT:
                 self.drive(0.0, math.copysign(TURN_RATE, angle_error))  # turn in place
@@ -166,13 +201,27 @@ class WaypointControl(Node):
             # At the position: turn to the waypoint's heading
             angle_error = wrap(goal_theta - self.theta)
             if abs(angle_error) > ANGLE_TOLERANCE:
+                self.paused_here = False
                 self.drive(0.0, math.copysign(TURN_RATE, angle_error))
+            elif not self.paused_here:
+                # Looks done: stop and let the camera take clean looks, then check again
+                self.paused_here = True
+                self.pause_until = time.time() + WAYPOINT_PAUSE
+                self.drive(0.0, 0.0)
             else:
+                # Still within tolerance after the pause: this waypoint is done
                 self.get_logger().info(
                     f'Reached waypoint {WAYPOINTS[self.waypoint_index]}: estimated pose '
                     f'x={self.x:.3f} y={self.y:.3f} theta={self.theta:.3f}')
+                self.waypoint_log.write(f'{goal_x},{goal_y},{goal_theta:.3f},'
+                                        f'{self.x:.3f},{self.y:.3f},{self.theta:.3f}\n')
+                self.waypoint_log.flush()
                 self.waypoint_index += 1
+                self.paused_here = False
                 self.drive(0.0, 0.0)
+                if self.waypoint_index == len(WAYPOINTS):
+                    self.get_logger().info('Route finished. Results in ~/waypoints.csv '
+                                           'and ~/trajectory.csv')
 
     def drive(self, v, w):
         # 4. Convert speed (m/s) and turn rate (rad/s) to wheel commands,
@@ -194,6 +243,7 @@ def main(args=None):
     except KeyboardInterrupt:
         pass
     node.log.close()
+    node.waypoint_log.close()
     node.destroy_node()
     if rclpy.ok():
         rclpy.shutdown()

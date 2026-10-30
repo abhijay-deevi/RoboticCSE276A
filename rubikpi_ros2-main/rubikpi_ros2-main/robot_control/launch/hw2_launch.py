@@ -1,6 +1,7 @@
-"""HW2: starts camera, AprilTag detector, and motor driver.
+"""HW2: starts camera, AprilTag detector, motor driver, and waypoint controller.
 
-Start waypoint_control separately once the robot is placed at (0, 0) facing +x.
+Place the robot at (0, 0) facing +x BEFORE launching. It starts driving on its
+own a few seconds after the camera is up.
 """
 
 from launch import LaunchDescription
@@ -14,7 +15,9 @@ from launch.substitutions import PathJoinSubstitution
 def generate_launch_description():
     camera = IncludeLaunchDescription(
         PythonLaunchDescriptionSource(PathJoinSubstitution([
-            FindPackageShare('robot_vision_camera'), 'launch', 'robot_vision_camera.launch.py'])))
+            FindPackageShare('robot_vision_camera'), 'launch', 'robot_vision_camera.launch.py'])),
+        # Undistort images using camera_parameter.yaml; the AprilTag node expects this.
+        launch_arguments={'image_rectify': 'true'}.items())
 
     # Same as: ros2 run apriltag_ros apriltag_node --ros-args -p family:=36h11 -p size:=0.10 ...
     apriltag = Node(
@@ -26,4 +29,6 @@ def generate_launch_description():
 
     motor = Node(package='robot_control', executable='motor_control', output='screen')
 
-    return LaunchDescription([camera, apriltag, motor])
+    waypoints = Node(package='robot_control', executable='waypoint_control', output='screen')
+
+    return LaunchDescription([camera, apriltag, motor, waypoints])
