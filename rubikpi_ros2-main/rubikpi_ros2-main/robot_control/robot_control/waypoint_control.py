@@ -4,9 +4,8 @@ Localization (whenever the camera sees tags):
   - read which tag IDs are visible (/detections)
   - look up where each tag is relative to the camera (TF camera_frame -> tag36h11:<id>)
   - look up where that tag is in the world (tag_map.yaml)
-  - work backwards to where the robot must be, average over all visible tags
-  - throw out readings far from our current estimate (bad far/angled tag reads)
-  - move our estimate 30% of the way toward the reading (smooths out noise)
+  - work backwards to where the robot must be, average over all visible tags,
+    and replace our pose estimate with it
 
   - tags are ignored while spinning in place (blurry images, delayed detections)
 
@@ -50,9 +49,6 @@ DRIVE_ANGLE_LIMIT = 0.3    # radians: if pointing further off than this, turn in
 HEADING_GAIN = 1.0         # P gain: how hard to steer back toward the waypoint while driving
 START_DELAY = 3.0          # seconds to wait after the camera is up before driving
 WAYPOINT_PAUSE = 2.0       # seconds to stop at each waypoint (shows clearly in the video)
-TAG_WEIGHT = 0.3           # how far to move the estimate toward each tag reading (0..1)
-MAX_JUMP_DISTANCE = 0.3    # meters: tag readings further than this from our estimate are ignored
-MAX_JUMP_ANGLE = 0.5       # radians (~30 deg): same, for heading
 
 TURN_RATE = (LEFT_TURN_RATE + RIGHT_TURN_RATE) / 2  # rad/s when turning in place
 DT = 0.05                                            # control loop period (s)
@@ -113,29 +109,18 @@ class WaypointControl(Node):
             if det.id not in self.tag_map:
                 continue  # tag not on our map, ignore it
             estimate = self.pose_from_tag(det.id)
-            if estimate is None:
-                continue
-            # Ignore readings that would make the robot jump: far-away or steeply
-            # angled tags sometimes give a pose that is badly wrong.
-            if (math.hypot(estimate[0] - self.x, estimate[1] - self.y) > MAX_JUMP_DISTANCE
-                    or abs(wrap(estimate[2] - self.theta)) > MAX_JUMP_ANGLE):
-                continue
-            estimates.append(estimate)
+            if estimate is not None:
+                estimates.append(estimate)
 
         if not estimates:
             return  # no usable tag: keep the dead-reckoning estimate
 
-        # Average the guesses. Angles are averaged with sin/cos so that
-        # +179 deg and -179 deg average to 180 deg, not 0 deg.
-        tag_x = sum(e[0] for e in estimates) / len(estimates)
-        tag_y = sum(e[1] for e in estimates) / len(estimates)
-        tag_theta = math.atan2(sum(math.sin(e[2]) for e in estimates),
-                               sum(math.cos(e[2]) for e in estimates))
-
-        # Move part of the way toward the camera's answer instead of jumping to it
-        self.x += TAG_WEIGHT * (tag_x - self.x)
-        self.y += TAG_WEIGHT * (tag_y - self.y)
-        self.theta = wrap(self.theta + TAG_WEIGHT * wrap(tag_theta - self.theta))
+        # Average the guesses and trust the camera. Angles are averaged with
+        # sin/cos so that +179 deg and -179 deg average to 180 deg, not 0 deg.
+        self.x = sum(e[0] for e in estimates) / len(estimates)
+        self.y = sum(e[1] for e in estimates) / len(estimates)
+        self.theta = math.atan2(sum(math.sin(e[2]) for e in estimates),
+                                sum(math.cos(e[2]) for e in estimates))
 
     def pose_from_tag(self, tag_id):
         # Where is the tag relative to the camera?
