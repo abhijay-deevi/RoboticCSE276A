@@ -5,15 +5,15 @@ tags:
     x: 1.5
     y: 0.0
     yaw: 3.1416 # faces -x, back toward the start
-  1:            # ahead of the robot on leg 2 (driving toward +y)
+  2:            # ahead of the robot on leg 2 (driving toward +y)
     x: 1.0
     y: 2.5
     yaw: -1.5708 # faces -y
-  2:            # seen after turning to face pi at waypoint (1, 2)
+  6:            # seen after turning to face pi at waypoint (1, 2)
     x: -0.5
     y: 2.0
     yaw: 0.0    # faces +x
-  3:            # seen on leg 3 while driving back toward the start
+  7:            # seen on leg 3 while driving back toward the start
     x: 0.0
     y: -0.5
     yaw: 1.5708 # faces +y
