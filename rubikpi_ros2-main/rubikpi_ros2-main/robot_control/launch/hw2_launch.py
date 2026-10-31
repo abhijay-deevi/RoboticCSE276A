@@ -20,10 +20,12 @@ def generate_launch_description():
         launch_arguments={'image_rectify': 'true'}.items())
 
     # Same as: ros2 run apriltag_ros apriltag_node --ros-args -p family:=36h11 -p size:=0.10 ...
+    # Reads the JPEG-compressed images: the full 1280x720 raw images (2.7 MB each)
+    # only arrive about 1-2 times per second between processes; compressed gets all 10.
     apriltag = Node(
         package='apriltag_ros',
         executable='apriltag_node',
-        parameters=[{'family': '36h11', 'size': 0.10}],
+        parameters=[{'family': '36h11', 'size': 0.10, 'image_transport': 'compressed'}],
         remappings=[('image_rect', '/camera/image_raw'),
                     ('camera_info', '/camera/camera_info')])
 
