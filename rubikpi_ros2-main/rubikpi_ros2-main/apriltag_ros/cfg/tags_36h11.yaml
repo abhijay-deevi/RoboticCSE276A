@@ -1,14 +1,11 @@
 /**:
     ros__parameters:
-        image_transport: raw    # image format
-        family: 36h11           # tag family name
-        size: 0.10              # tag edge size in meter
+        image_transport: raw  
+        family: 36h11
+        size: 0.10
 
-        # detector settings are left at their defaults (same as running with only -p family/size)
+        pose_estimation_method: "pnp"   
 
-        pose_estimation_method: "pnp"   # method for estimating the tag pose
-
-        # tags we use as landmarks; each gets a TF frame named tag_<id>
         tag:
             ids: [0, 1, 2, 3, 4, 5, 6, 7]
             frames: [tag_0, tag_1, tag_2, tag_3, tag_4, tag_5, tag_6, tag_7]
