@@ -1,0 +1,117 @@
+[INFO] [launch]: All log files can be found below /home/ubuntu/.ros/log/2026-10-31-00-43-20-591093-ubuntu-8406
+[INFO] [launch]: Default logging verbosity is set to INFO
+[INFO] [robot_vision_camera_node-1]: process started with pid [8411]
+[INFO] [foxglove_bridge-2]: process started with pid [8412]
+[INFO] [apriltag_node-3]: process started with pid [8413]
+[INFO] [motor_control-4]: process started with pid [8414]
+[INFO] [waypoint_control-5]: process started with pid [8415]
+[foxglove_bridge-2] [INFO] [1793407400.856158012] [foxglove_bridge]: Starting foxglove_bridge (jazzy, 3.5.0@)
+[foxglove_bridge-2] [2026-10-31T00:43:20Z INFO  foxglove::websocket::server] Started server on 0.0.0.0:8765
+[foxglove_bridge-2] [INFO] [1793407400.861987353] [foxglove_bridge]: Server listening on port 8765
+[foxglove_bridge-2] [INFO] [1793407400.864501489] [foxglove_bridge]: Advertising new channel 2 for topic "/rosout"
+[foxglove_bridge-2] [INFO] [1793407400.866430801] [foxglove_bridge]: Advertising new channel 3 for topic "/parameter_events"
+[foxglove_bridge-2] [INFO] [1793407400.915694768] [foxglove_bridge]: Advertising new channel 4 for topic "/detections"
+[foxglove_bridge-2] [INFO] [1793407400.917373098] [foxglove_bridge]: Advertising new channel 5 for topic "/camera/image_raw/compressed"
+[robot_vision_camera_node-1] [INFO] [1793407400.918072190] [robot_vision_camera]: frame_rate: 10
+[robot_vision_camera_node-1] [INFO] [1793407400.918437803] [robot_vision_camera]: width: 1280
+[robot_vision_camera_node-1] [INFO] [1793407400.918468792] [robot_vision_camera]: height: 720
+[robot_vision_camera_node-1] [INFO] [1793407400.918477854] [robot_vision_camera]: camera_id: 0
+[robot_vision_camera_node-1] [INFO] [1793407400.918485770] [robot_vision_camera]: input_format: NV12
+[robot_vision_camera_node-1] [INFO] [1793407400.918493218] [robot_vision_camera]: output_format: BGR
+[robot_vision_camera_node-1] [INFO] [1793407400.918501655] [robot_vision_camera]: topic_name: camera/image_raw
+[robot_vision_camera_node-1] [INFO] [1793407400.918510040] [robot_vision_camera]: image_compress: true
+[robot_vision_camera_node-1] [INFO] [1793407400.918518165] [robot_vision_camera]: image_rectify: true
+[robot_vision_camera_node-1] [INFO] [1793407400.918526550] [robot_vision_camera]: jpeg_quality: 90
+[robot_vision_camera_node-1] [INFO] [1793407400.918536237] [robot_vision_camera]: brightness: 0.05
+[robot_vision_camera_node-1] [INFO] [1793407400.918553685] [robot_vision_camera]: contrast: 1.00
+[robot_vision_camera_node-1] [INFO] [1793407400.918564466] [robot_vision_camera]: saturation: 0.20
+[robot_vision_camera_node-1] [INFO] [1793407400.918579309] [robot_vision_camera]: hue: 0.10
+[foxglove_bridge-2] [INFO] [1793407400.920513725] [foxglove_bridge]: Advertising new channel 6 for topic "/tf"
+[foxglove_bridge-2] [INFO] [1793407400.923573469] [foxglove_bridge]: Advertising new channel 7 for topic "/camera/camera_info"
+[robot_vision_camera_node-1] [INFO] [1793407400.936928971] [robot_vision_camera]: Camera info loaded successfully from: /home/ubuntu/RoboticCSE276A/install/robot_vision_camera/share/robot_vision_camera/config/camera_parameter.yaml
+[robot_vision_camera_node-1] [INFO] [1793407400.946087734] [robot_vision_camera]: Rectify ready. size=1280x720, D=1x5, K=(615.309,0,640.337 | 0,617.398,299.961 | 0,0,1)
+[robot_vision_camera_node-1] [INFO] [1793407400.957905005] [robot_vision_camera]: Input caps: video/x-raw,format=NV12,width=1280,height=720,framerate=10/1
+[robot_vision_camera_node-1] [INFO] [1793407400.957985576] [robot_vision_camera]: Output caps: video/x-raw,format=BGR
+[robot_vision_camera_node-1] [INFO] [1793407400.958006356] [robot_vision_camera]: Camera ID: 0
+[robot_vision_camera_node-1] failed to get driver name for fd 29
+[robot_vision_camera_node-1] MESA-LOADER: failed to retrieve device information
+[robot_vision_camera_node-1] failed to get driver name for fd 29
+[robot_vision_camera_node-1] [INFO] [1793407401.091745640] [robot_vision_camera]: GStreamer pipeline built successfully
+[robot_vision_camera_node-1] [INFO] [1793407401.222346433] [robot_vision_camera]: GStreamer pipeline started
+[foxglove_bridge-2] [INFO] [1793407401.466080255] [foxglove_bridge]: Advertising new channel 8 for topic "/motor_commands"
+[foxglove_bridge-2] [INFO] [1793407401.466335507] [foxglove_bridge]: Advertising new channel 9 for topic "/imu_data"
+[foxglove_bridge-2] [INFO] [1793407401.466555864] [foxglove_bridge]: Advertising new channel 10 for topic "/camera/image_raw"
+[motor_control-4] [INFO] [1793407401.492459238] [motor_controller_node]: Serial connection established on /dev/ttyUSB0
+[motor_control-4] [INFO] [1793407401.494487193] [motor_controller_node]: Motor Controller Node with IMU started
+[motor_control-4] [INFO] [1793407401.495156182] [motor_controller_node]: Listening for motor commands on topic: motor_commands
+[motor_control-4] [INFO] [1793407401.495756006] [motor_controller_node]: Publishing IMU data on topic: imu_data
+[motor_control-4] [INFO] [1793407401.496383590] [motor_controller_node]: Safety timeout set to 0.15 seconds
+[motor_control-4] [INFO] [1793407401.497184866] [motor_controller_node]: Requesting IMU data at 50Hz
+[waypoint_control-5] [INFO] [1793407401.590745825] [waypoint_control]: Waypoint control ready, 4 tags in map. Waiting for camera...
+[foxglove_bridge-2] [INFO] [1793407401.982984231] [foxglove_bridge]: Advertising new channel 11 for topic "/tf_static"
+[waypoint_control-5] [INFO] [1793407404.673794210] [waypoint_control]: GO! Starting pose x=0.008 y=0.055 theta=0.039
+[waypoint_control-5] [INFO] [1793407410.772188644] [waypoint_control]: Reached waypoint (1.0, 0.0, 0.0): estimated pose x=1.011 y=-0.008 theta=0.049
+[waypoint_control-5] [INFO] [1793407423.221410070] [waypoint_control]: Reached waypoint (1.0, 2.0, 3.141592653589793): estimated pose x=0.972 y=2.017 theta=3.082
+[waypoint_control-5] [INFO] [1793407458.072412680] [waypoint_control]: Reached waypoint (0.0, 0.0, 0.0): estimated pose x=0.005 y=0.009 theta=0.007
+[waypoint_control-5] [INFO] [1793407458.077617459] [waypoint_control]: Route finished. Results in ~/waypoints.csv and ~/trajectory.csv
+[apriltag_node-3] [INFO] [1793407459.620864730] [rclcpp]: signal_handler(SIGINT/SIGTERM)
+[robot_vision_camera_node-1] [INFO] [1793407459.620928477] [rclcpp]: signal_handler(SIGINT/SIGTERM)
+[foxglove_bridge-2] [INFO] [1793407459.621346954] [rclcpp]: signal_handler(SIGINT/SIGTERM)
+[foxglove_bridge-2] [INFO] [1793407459.630710036] [foxglove_bridge]: Shutting down foxglove_bridge
+[foxglove_bridge-2] [2026-10-31T00:44:19Z INFO  foxglove::websocket::server] Shutting down
+[foxglove_bridge-2] [2026-10-31T00:44:19Z INFO  foxglove::websocket::server] Shutdown complete
+[foxglove_bridge-2] [INFO] [1793407459.632436855] [foxglove_bridge]: Shutdown complete
+[motor_control-4] [ERROR] [1793407459.668780211] [motor_controller_node]: Error processing IMU data: Failed to publish: publisher's context is invalid, at ./src/rcl/publisher.c:423
+[motor_control-4] Failed to publish log message to rosout: publisher's context is invalid, at ./src/rcl/publisher.c:423
+[motor_control-4] [ERROR] [1793407459.675081830] [motor_controller_node]: Error processing IMU data: Failed to publish: publisher's context is invalid, at ./src/rcl/publisher.c:423
+[motor_control-4] Failed to publish log message to rosout: publisher's context is invalid, at ./src/rcl/publisher.c:423
+[motor_control-4] [ERROR] [1793407459.684686259] [motor_controller_node]: Error processing IMU data: Failed to publish: publisher's context is invalid, at ./src/rcl/publisher.c:423
+[motor_control-4] Failed to publish log message to rosout: publisher's context is invalid, at ./src/rcl/publisher.c:423
+[motor_control-4] [ERROR] [1793407459.689683389] [motor_controller_node]: Error processing IMU data: Failed to publish: publisher's context is invalid, at ./src/rcl/publisher.c:423
+[motor_control-4] Failed to publish log message to rosout: publisher's context is invalid, at ./src/rcl/publisher.c:423
+[motor_control-4] [INFO] [1793407459.691320732] [motor_controller_node]: Robot stopped
+[motor_control-4] Failed to publish log message to rosout: publisher's context is invalid, at ./src/rcl/publisher.c:423
+[motor_control-4] [INFO] [1793407459.696462701] [motor_controller_node]: Serial connection closed
+[motor_control-4] Failed to publish log message to rosout: publisher's context is invalid, at ./src/rcl/publisher.c:423
+[waypoint_control-5] Traceback (most recent call last):
+[waypoint_control-5]   File "/home/ubuntu/RoboticCSE276A/install/robot_control/lib/robot_control/waypoint_control", line 33, in <module>
+[waypoint_control-5]     sys.exit(load_entry_point('robot-control', 'console_scripts', 'waypoint_control')())
+[waypoint_control-5]              ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+[waypoint_control-5]   File "/home/ubuntu/RoboticCSE276A/build/robot_control/robot_control/waypoint_control.py", line 242, in main
+[waypoint_control-5]     rclpy.spin(node)
+[waypoint_control-5]   File "/opt/ros/jazzy/lib/python3.12/site-packages/rclpy/__init__.py", line 247, in spin
+[waypoint_control-5]     executor.spin_once()
+[waypoint_control-5]   File "/opt/ros/jazzy/lib/python3.12/site-packages/rclpy/executors.py", line 926, in spin_once
+[waypoint_control-5]     self._spin_once_impl(timeout_sec)
+[waypoint_control-5]   File "/opt/ros/jazzy/lib/python3.12/site-packages/rclpy/executors.py", line 907, in _spin_once_impl
+[waypoint_control-5]     handler, entity, node = self.wait_for_ready_callbacks(
+[waypoint_control-5]                             ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+[waypoint_control-5]   File "/opt/ros/jazzy/lib/python3.12/site-packages/rclpy/executors.py", line 877, in wait_for_ready_callbacks
+[waypoint_control-5]     return next(self._cb_iter)
+[waypoint_control-5]            ^^^^^^^^^^^^^^^^^^^
+[waypoint_control-5]   File "/opt/ros/jazzy/lib/python3.12/site-packages/rclpy/executors.py", line 785, in _wait_for_ready_callbacks
+[waypoint_control-5]     raise ExternalShutdownException()
+[waypoint_control-5] rclpy.executors.ExternalShutdownException
+[INFO] [apriltag_node-3]: process has finished cleanly [pid 8413]
+[motor_control-4] Traceback (most recent call last):
+[motor_control-4]   File "/home/ubuntu/RoboticCSE276A/install/robot_control/lib/robot_control/motor_control", line 33, in <module>
+[motor_control-4]     sys.exit(load_entry_point('robot-control', 'console_scripts', 'motor_control')())
+[motor_control-4]              ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+[motor_control-4]   File "/home/ubuntu/RoboticCSE276A/build/robot_control/robot_control/motor_control.py", line 424, in main
+[motor_control-4]     rclpy.spin(node)
+[motor_control-4]   File "/opt/ros/jazzy/lib/python3.12/site-packages/rclpy/__init__.py", line 247, in spin
+[motor_control-4]     executor.spin_once()
+[motor_control-4]   File "/opt/ros/jazzy/lib/python3.12/site-packages/rclpy/executors.py", line 926, in spin_once
+[motor_control-4]     self._spin_once_impl(timeout_sec)
+[motor_control-4]   File "/opt/ros/jazzy/lib/python3.12/site-packages/rclpy/executors.py", line 907, in _spin_once_impl
+[motor_control-4]     handler, entity, node = self.wait_for_ready_callbacks(
+[motor_control-4]                             ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+[motor_control-4]   File "/opt/ros/jazzy/lib/python3.12/site-packages/rclpy/executors.py", line 877, in wait_for_ready_callbacks
+[motor_control-4]     return next(self._cb_iter)
+[motor_control-4]            ^^^^^^^^^^^^^^^^^^^
+[motor_control-4]   File "/opt/ros/jazzy/lib/python3.12/site-packages/rclpy/executors.py", line 785, in _wait_for_ready_callbacks
+[motor_control-4]     raise ExternalShutdownException()
+[motor_control-4] rclpy.executors.ExternalShutdownException
+[INFO] [foxglove_bridge-2]: process has finished cleanly [pid 8412]
+[ERROR] [waypoint_control-5]: process has died [pid 8415, exit code 1, cmd '/home/ubuntu/RoboticCSE276A/install/robot_control/lib/robot_control/waypoint_control --ros-args'].
+[ERROR] [motor_control-4]: process has died [pid 8414, exit code 1, cmd '/home/ubuntu/RoboticCSE276A/install/robot_control/lib/robot_control/motor_control --ros-args'].

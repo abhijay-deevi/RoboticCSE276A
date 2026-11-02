@@ -1,12 +1,3 @@
-"""Plot the robot's estimated trajectory and compute total distance moved.
-
-Usage (on your laptop, after copying trajectory.csv off the robot):
-    python plot_trajectory.py trajectory.csv
-
-Draws one dot every 0.5 s (report part i) and prints the total distance
-driven and total rotation (report part g).
-"""
-
 import math
 import sys
 
