@@ -1,3 +1,4 @@
+# setup confi file
 from setuptools import find_packages, setup
 
 package_name = 'robot_control'
