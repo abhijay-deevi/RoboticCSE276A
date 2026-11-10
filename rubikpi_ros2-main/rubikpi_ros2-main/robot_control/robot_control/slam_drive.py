@@ -43,7 +43,8 @@ SPEED_NOISE = 0.15         # wheels: speed is off by about 15%
 TURN_NOISE = 0.30          # wheels: fast in-place turns are off by up to ~30% (seen in test laps)
 MEAS_NOISE = 0.02          # camera: 2 cm error up close
 MEAS_NOISE_PER_M = 0.03    # camera: plus 3 cm per meter of distance
-OUTLIER_GATE = 13.8        # chi-square 99.9% for 2 numbers: reject anything less likely
+OUTLIER_GATE = 50.0        # reject only readings ~7 sigma off; 3.7 sigma (13.8) also threw out real
+                           # drift corrections in our test laps
 
 
 def path_corners(shape, side):
@@ -81,7 +82,7 @@ class SlamDrive(Node):
             f"~/hw3_runs/{self.shape}_{time.strftime('%Y%m%d_%H%M%S')}")
         os.makedirs(self.run_dir)
         self.traj_file = open(os.path.join(self.run_dir, 'trajectory.csv'), 'w')
-        self.traj_file.write('time,lap,x,y,theta,num_landmarks\n')
+        self.traj_file.write('time,lap,x,y,theta,num_landmarks,v,w\n')
         self.meas_file = open(os.path.join(self.run_dir, 'measurements.csv'), 'w')
         self.meas_file.write('time,tag_id,forward,left,result\n')
 
@@ -135,7 +136,7 @@ class SlamDrive(Node):
         x, y, theta = self.ekf.x[0], self.ekf.x[1], self.ekf.x[2]
         lap = self.corner_index // len(self.corners) if self.corners else 0
         self.traj_file.write(f'{time.time() - self.start_time:.2f},{lap},'
-                             f'{x:.4f},{y:.4f},{theta:.4f},{len(self.ekf.ids)}\n')
+                             f'{x:.4f},{y:.4f},{theta:.4f},{len(self.ekf.ids)},{self.v:.4f},{self.w:.4f}\n')
 
         if self.finished or not self.route:
             self.drive(0.0, 0.0)
