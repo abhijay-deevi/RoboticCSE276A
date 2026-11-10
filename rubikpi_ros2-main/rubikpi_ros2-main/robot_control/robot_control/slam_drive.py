@@ -2,7 +2,7 @@
 
 The robot knows nothing about the tags. Its start pose is the map origin (0, 0, 0).
   - every 0.05 s: EKF predict with the commanded speed, then steer to the next corner
-  - corners: timed turn in place (90 deg = 0.67 s at full strength, measured on our floor)
+  - corners: timed turn in place (90 deg = about 1.5 s at strength 0.45, measured on our floor)
   - every tag detection: EKF update (new tag -> added to the map)
   - logs go to ~/hw3_runs/<shape>_<date_time>/
 
@@ -25,10 +25,11 @@ from tf2_ros import Buffer, TransformListener
 
 from robot_control.ekf_slam import EkfSlam, wrap
 # Measured on THIS floor with our forward/turn tests (HW1's numbers were for another floor)
-DRIVE_COMMAND = 0.40              # wheel command for driving forward
-DRIVE_SPEED = 1.22 / 2.3          # m/s at DRIVE_COMMAND: 4 ft took 2.3 s
-TURN_STRENGTH = 0.50              # wheel command for turning in place (motor driver maximum)
-TURN_RATE = (math.pi / 2) / 0.67  # rad/s at TURN_STRENGTH: 90 deg took 0.67 s
+# Slow settings: faster ones (0.40 forward, 0.50 turns) left the camera too few clear frames
+DRIVE_COMMAND = 0.20              # wheel command for driving forward
+DRIVE_SPEED = 1.22 / 5.8          # m/s at DRIVE_COMMAND: 4 ft took 5.8 s
+TURN_STRENGTH = 0.45              # wheel command for turning in place
+TURN_RATE = (math.pi / 2) / 1.5   # rad/s at TURN_STRENGTH: 90 deg took about 1.5 s
 
 POSITION_TOLERANCE = 0.05  # meters: close enough to a corner
 DRIVE_ANGLE_LIMIT = 0.3    # radians: if pointing further off than this, turn in place first
