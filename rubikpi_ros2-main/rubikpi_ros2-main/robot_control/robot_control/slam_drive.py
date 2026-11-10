@@ -30,11 +30,12 @@ from robot_control.ekf_slam import EkfSlam, wrap
 DRIVE_COMMAND = 0.20              # wheel command for driving forward
 DRIVE_SPEED = 1.22 / 5.8          # m/s at DRIVE_COMMAND: 4 ft took 5.8 s
 TURN_STRENGTH = 0.45              # wheel command for turning in place
-TURN_RATE = (math.pi / 2) / 1.1   # rad/s at TURN_STRENGTH: 90 deg took about 1.1 s
-                                  # (1.5 s made the robot overshoot its first corner)
+TURN_RATE = (math.pi / 2) / 1.25  # rad/s at TURN_STRENGTH in short bursts: 90 deg ~ 1.25 s
+                                  # (1.5 s overshot the first corner; with 1.1 s the camera kept
+                                  # finding the robot further right than predicted after left turns)
 
 POSITION_TOLERANCE = 0.05  # meters: close enough to a corner
-TURN_DONE = math.radians(5)  # before each drive burst, turn until pointing this close to the corner
+TURN_DONE = math.radians(3)  # after every move, turn (left or right) until this close to the corner
 DRIVE_BURST = 0.8          # seconds of driving per burst
 TURN_BURST = 0.2           # seconds of turning per burst (about 16 deg)
 REST = 0.7                 # seconds stopped after every burst (camera gets still frames)
