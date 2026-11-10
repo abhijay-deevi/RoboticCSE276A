@@ -2,7 +2,8 @@
 
 The robot knows nothing about the tags. Its start pose is the map origin (0, 0, 0).
   - every 0.05 s: EKF predict with the commanded speed, then steer to the next corner
-  - corners: timed turn in place (90 deg = about 1.5 s at strength 0.45, measured on our floor)
+  - moves in short bursts with stops in between (slow overall; the camera gets still frames
+    at every stop): turn bursts until facing the next corner, then drive bursts toward it
   - every tag detection: EKF update (new tag -> added to the map)
   - logs go to ~/hw3_runs/<shape>_<date_time>/
 
@@ -32,11 +33,13 @@ TURN_STRENGTH = 0.45              # wheel command for turning in place
 TURN_RATE = (math.pi / 2) / 1.5   # rad/s at TURN_STRENGTH: 90 deg took about 1.5 s
 
 POSITION_TOLERANCE = 0.05  # meters: close enough to a corner
-DRIVE_ANGLE_LIMIT = 0.3    # radians: if pointing further off than this, turn in place first
+TURN_DONE = math.radians(8)  # turn in place until pointing this close to the next corner
+DRIVE_BURST = 0.5          # seconds of driving per burst
+TURN_BURST = 0.3           # seconds of turning per burst (about 18 deg)
+REST = 0.7                 # seconds stopped after every burst (camera gets still frames)
 HEADING_GAIN = 1.0         # P gain for steering while driving (same as HW2)
 START_DELAY = 3.0          # seconds to wait after the camera is up before driving
 CORNER_PAUSE = 1.0         # seconds to stop at each corner so the camera gets clear looks
-TURN_PAUSE = 0.5           # seconds to stop after a turn, before driving (HW1 stopped 0.3 s)
 
 DT = 0.05                  # loop period (s)
 CAMERA_OFFSET = 0.09       # meters the camera sits in front of the robot center
@@ -75,8 +78,8 @@ class SlamDrive(Node):
         self.route = self.corners * self.laps
         self.corner_index = 0
         self.v, self.w = 0.0, 0.0
-        self.turn_steps_left = 0   # loops left in the current timed turn
-        self.turn_wheels = 0.0     # +TURN_STRENGTH for a left turn, -TURN_STRENGTH for right
+        self.burst_until = 0.0     # end of the current short move
+        self.rest_until = 0.0      # end of the stop after it
         self.camera_up_time = None
         self.started = False
         self.pause_until = 0.0
@@ -106,8 +109,8 @@ class SlamDrive(Node):
     def on_detections(self, msg):
         if self.camera_up_time is None:
             self.camera_up_time = time.time()
-        if self.turn_steps_left > 0:
-            return  # turning fast: blurry, late images; rely on the prediction
+        if self.v == 0.0 and self.w != 0.0:
+            return  # turning in place: blurry, late images; rely on the prediction
         for det in msg.detections:
             try:
                 t = self.tf_buffer.lookup_transform('camera_frame', f'tag36h11:{det.id}', Time())
@@ -145,26 +148,31 @@ class SlamDrive(Node):
         if self.finished or not self.route:
             self.drive(0.0, 0.0)
             return
-        if self.turn_steps_left > 0:
-            # In the middle of a timed turn: keep the wheels turning
-            self.publish_wheels(-self.turn_wheels, self.turn_wheels)
-            self.turn_steps_left -= 1
-            if self.turn_steps_left == 0:
-                self.pause_until = time.time() + TURN_PAUSE  # turn done: stop briefly
-                self.drive(0.0, 0.0)
+        now = time.time()
+        if now < self.burst_until:
+            self.drive(self.v, self.w)  # in the middle of a short move: keep going
             return
-        if time.time() < self.pause_until:
-            self.drive(0.0, 0.0)  # stopped at a corner, camera is correcting the estimate
+        if self.v != 0.0 or self.w != 0.0:
+            self.rest_until = now + REST  # short move just ended: stop and let the camera look
+            self.drive(0.0, 0.0)
+            return
+        if now < self.rest_until or now < self.pause_until:
+            self.drive(0.0, 0.0)  # stopped, camera is correcting the estimate
             return
 
+        # Stopped and rested: decide the next short move from the corrected estimate
         goal_x, goal_y = self.route[self.corner_index]
-        if math.hypot(goal_x - x, goal_y - y) > POSITION_TOLERANCE:
-            # Pointing far off: timed turn in place. Otherwise drive and steer (same as HW2).
+        distance = math.hypot(goal_x - x, goal_y - y)
+        if distance > POSITION_TOLERANCE:
             angle_error = wrap(math.atan2(goal_y - y, goal_x - x) - theta)
-            if abs(angle_error) > DRIVE_ANGLE_LIMIT:
-                self.start_turn(angle_error)
+            if abs(angle_error) > TURN_DONE:
+                # Turn in place toward the corner (the last burst only as long as needed)
+                seconds = max(0.1, min(TURN_BURST, abs(angle_error) / TURN_RATE))
+                self.burst(0.0, math.copysign(TURN_RATE, angle_error), seconds)
             else:
-                self.drive(DRIVE_SPEED, HEADING_GAIN * angle_error)
+                # Drive toward the corner and steer (same as HW2); don't overshoot it
+                seconds = max(0.1, min(DRIVE_BURST, distance / DRIVE_SPEED))
+                self.burst(DRIVE_SPEED, HEADING_GAIN * angle_error, seconds)
             return
 
         # Reached a corner: stop for a moment, then head to the next one
@@ -180,14 +188,10 @@ class SlamDrive(Node):
             self.save_map('landmarks_final.csv')
             self.get_logger().info(f'Route finished. Results in {self.run_dir}')
 
-    def start_turn(self, angle):
-        """Turn in place by `angle` (+ = left) at full strength: time = angle / TURN_RATE."""
-        self.turn_steps_left = max(1, round(abs(angle) / TURN_RATE / DT))
-        self.turn_wheels = TURN_STRENGTH if angle > 0 else -TURN_STRENGTH
-        # What the EKF predicts each loop: the whole turn spread evenly over the turn time
-        self.v, self.w = 0.0, angle / (self.turn_steps_left * DT)
-        self.publish_wheels(-self.turn_wheels, self.turn_wheels)
-        self.turn_steps_left -= 1
+    def burst(self, v, w, seconds):
+        """Start a short move at speed v (m/s) and turn rate w (rad/s) for `seconds`."""
+        self.burst_until = time.time() + seconds
+        self.drive(v, w)
 
     def publish_wheels(self, left, right):
         msg = Float32MultiArray()
