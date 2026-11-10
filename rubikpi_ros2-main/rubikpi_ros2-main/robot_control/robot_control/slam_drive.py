@@ -43,7 +43,7 @@ CAMERA_OFFSET = 0.09       # meters the camera sits in front of the robot center
 SPEED_NOISE = 0.15         # wheels: speed is off by about 15%
 TURN_NOISE = 0.30          # wheels: fast in-place turns are off by up to ~30% (seen in test laps)
 GYRO_NOISE = 0.05          # gyro: measured turns are off by about 5%
-IMU_YAW_SIGN = 1.0         # +1 if the IMU yaw increases when turning left (checked by hand test)
+SIGN_CHECK_ANGLE = 0.3     # radians of the first in-place turn used to learn the IMU's direction
 MEAS_NOISE = 0.02          # camera: 2 cm error up close
 MEAS_NOISE_PER_M = 0.03    # camera: plus 3 cm per meter of distance
 OUTLIER_GATE = 50.0        # reject only readings ~7 sigma off; 3.7 sigma (13.8) also threw out real
@@ -77,6 +77,8 @@ class SlamDrive(Node):
         self.v, self.w = 0.0, 0.0
         self.imu_yaw = None        # latest heading from the IMU (radians)
         self.last_imu_yaw = None   # IMU heading at the previous loop
+        self.imu_sign = None       # +1 or -1: does the IMU count left turns as positive?
+        self.sign_check = [0.0, 0.0]  # [commanded turn, IMU turn] during the first in-place turn
         self.camera_up_time = None
         self.started = False
         self.pause_until = 0.0
@@ -128,7 +130,7 @@ class SlamDrive(Node):
     def on_imu(self, msg):
         # Yaw (heading) from the IMU orientation quaternion
         q = msg.orientation
-        self.imu_yaw = IMU_YAW_SIGN * math.atan2(2 * (q.w * q.z + q.x * q.y),
+        self.imu_yaw = math.atan2(2 * (q.w * q.z + q.x * q.y),
                                                  1 - 2 * (q.y * q.y + q.z * q.z))
 
     def measured_turn_rate(self):
@@ -138,7 +140,20 @@ class SlamDrive(Node):
         previous, self.last_imu_yaw = self.last_imu_yaw, self.imu_yaw
         if previous is None:
             return None
-        return wrap(self.imu_yaw - previous) / DT
+        turned = wrap(self.imu_yaw - previous)
+        if self.imu_sign is None:
+            # Learn the IMU's direction from the first in-place turn: compare the
+            # commanded turn direction with the direction the IMU says we turned
+            if self.v == 0.0 and self.w != 0.0:
+                self.sign_check[0] += self.w * DT
+                self.sign_check[1] += turned
+                if abs(self.sign_check[0]) > SIGN_CHECK_ANGLE:
+                    self.imu_sign = 1.0 if self.sign_check[0] * self.sign_check[1] > 0 else -1.0
+                    self.get_logger().info(f'IMU direction learned: sign {self.imu_sign:+.0f} '
+                                           f'(commanded {self.sign_check[0]:.2f} rad, '
+                                           f'IMU {self.sign_check[1]:.2f} rad)')
+            return None  # until then, use the commanded turn
+        return self.imu_sign * turned / DT
 
     # ---------------- Control loop ----------------
 
