@@ -3,18 +3,19 @@
 #
 # World frame: origin = one corner of the 8 ft (2.44 m) square, x along one wall,
 # y along the wall to its left. Meters and radians.
-# Measured: each tag is 2 ft 2 in (26 in = 0.660 m) from its nearest corner,
-# so on each 8 ft (96 in) wall the tags are at 26 in and 70 in (1.778 m).
+# Measured (see our sketch): origin = corner between the tag 2/1 wall and the
+# tag 3/4 wall. Each tag is 2 ft (0.610 m) from its nearest corner, so on each
+# 8 ft (2.438 m) wall the tags are at 2 ft and 6 ft (1.829 m).
 
 tags:            # center of each tag
-  0: {x: 0.660, y: 0.0}     # bottom wall
-  1: {x: 1.778, y: 0.0}
-  2: {x: 2.438, y: 0.660}   # right wall
-  3: {x: 2.438, y: 1.778}
-  4: {x: 1.778, y: 2.438}   # top wall
-  5: {x: 0.660, y: 2.438}
-  6: {x: 0.0,   y: 1.778}   # left wall
-  7: {x: 0.0,   y: 0.660}
+  2: {x: 0.610, y: 0.0}     # bottom wall (y = 0)
+  1: {x: 1.829, y: 0.0}
+  0: {x: 2.438, y: 0.610}   # right wall (x = 8 ft)
+  7: {x: 2.438, y: 1.829}
+  6: {x: 1.829, y: 2.438}   # top wall (y = 8 ft)
+  5: {x: 0.610, y: 2.438}
+  4: {x: 0.0,   y: 1.829}   # left wall (x = 0)
+  3: {x: 0.0,   y: 0.610}
 
 # Where the robot's center started, and which way it faced (0 = along +x)
 start:
