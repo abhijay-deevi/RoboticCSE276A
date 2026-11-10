@@ -1,0 +1,21 @@
+# HW3 ground truth, measured by hand with a tape measure. NOT used by the robot,
+# only by scripts/plot_slam.py to compare the robot's map with the real one.
+#
+# World frame: origin = one corner of the 8 ft (2.44 m) square, x along one wall,
+# y along the wall to its left. Meters and radians.
+# Planned values are filled in; replace them with what you actually measure.
+
+tags:            # center of each tag
+  0: {x: 0.81, y: 0.0}    # bottom wall
+  1: {x: 1.63, y: 0.0}
+  2: {x: 2.44, y: 0.81}   # right wall
+  3: {x: 2.44, y: 1.63}
+  4: {x: 1.63, y: 2.44}   # top wall
+  5: {x: 0.81, y: 2.44}
+  6: {x: 0.0,  y: 1.63}   # left wall
+  7: {x: 0.0,  y: 0.81}
+
+# Where the robot's center started, and which way it faced (0 = along +x)
+start:
+  square:  {x: 0.61,  y: 0.61,  theta: 0.0}   # 4 ft square, centered
+  octagon: {x: 0.915, y: 0.484, theta: 0.0}   # 2 ft octagon, centered
