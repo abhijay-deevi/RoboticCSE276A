@@ -19,6 +19,7 @@ from rclpy.executors import ExternalShutdownException
 from rclpy.node import Node
 from rclpy.time import Time
 from std_msgs.msg import Float32MultiArray
+from sensor_msgs.msg import Imu
 from apriltag_msgs.msg import AprilTagDetectionArray
 from tf2_ros import Buffer, TransformListener
 
@@ -41,6 +42,8 @@ CAMERA_OFFSET = 0.09       # meters the camera sits in front of the robot center
 # EKF noise settings (see report: how noise was chosen)
 SPEED_NOISE = 0.15         # wheels: speed is off by about 15%
 TURN_NOISE = 0.30          # wheels: fast in-place turns are off by up to ~30% (seen in test laps)
+GYRO_NOISE = 0.05          # gyro: measured turns are off by about 5%
+IMU_YAW_SIGN = 1.0         # +1 if the IMU yaw increases when turning left (checked by hand test)
 MEAS_NOISE = 0.02          # camera: 2 cm error up close
 MEAS_NOISE_PER_M = 0.03    # camera: plus 3 cm per meter of distance
 OUTLIER_GATE = 50.0        # reject only readings ~7 sigma off; 3.7 sigma (13.8) also threw out real
@@ -72,6 +75,8 @@ class SlamDrive(Node):
         self.route = self.corners * self.laps
         self.corner_index = 0
         self.v, self.w = 0.0, 0.0
+        self.imu_yaw = None        # latest heading from the IMU (radians)
+        self.last_imu_yaw = None   # IMU heading at the previous loop
         self.camera_up_time = None
         self.started = False
         self.pause_until = 0.0
@@ -89,6 +94,7 @@ class SlamDrive(Node):
         self.tf_buffer = Buffer()
         self.tf_listener = TransformListener(self.tf_buffer, self)
         self.create_subscription(AprilTagDetectionArray, '/detections', self.on_detections, 10)
+        self.create_subscription(Imu, 'imu_data', self.on_imu, 10)
         self.motor_pub = self.create_publisher(Float32MultiArray, 'motor_commands', 10)
 
         self.start_time = time.time()
@@ -119,6 +125,21 @@ class SlamDrive(Node):
                 self.get_logger().info(f'New landmark: tag {det.id} '
                                        f'({len(self.ekf.ids)} in map)')
 
+    def on_imu(self, msg):
+        # Yaw (heading) from the IMU orientation quaternion
+        q = msg.orientation
+        self.imu_yaw = IMU_YAW_SIGN * math.atan2(2 * (q.w * q.z + q.x * q.y),
+                                                 1 - 2 * (q.y * q.y + q.z * q.z))
+
+    def measured_turn_rate(self):
+        """Turn rate from the gyro over the last loop, or None if there is no IMU data."""
+        if self.imu_yaw is None:
+            return None
+        previous, self.last_imu_yaw = self.last_imu_yaw, self.imu_yaw
+        if previous is None:
+            return None
+        return wrap(self.imu_yaw - previous) / DT
+
     # ---------------- Control loop ----------------
 
     def loop(self):
@@ -130,8 +151,15 @@ class SlamDrive(Node):
             self.start_time = time.time()
             self.get_logger().info('GO!')
 
-        # EKF predict: move the estimate by what we commanded during the last DT
-        self.ekf.predict(self.v, self.w, DT)
+        # EKF predict: move the estimate by the commanded speed and the turn the gyro measured
+        # (commanded turns were ~20 deg off at corners). Falls back to the commanded turn.
+        w_gyro = self.measured_turn_rate()
+        if w_gyro is not None:
+            self.ekf.turn_noise = GYRO_NOISE
+            self.ekf.predict(self.v, w_gyro, DT)
+        else:
+            self.ekf.turn_noise = TURN_NOISE
+            self.ekf.predict(self.v, self.w, DT)
 
         x, y, theta = self.ekf.x[0], self.ekf.x[1], self.ekf.x[2]
         lap = self.corner_index // len(self.corners) if self.corners else 0
