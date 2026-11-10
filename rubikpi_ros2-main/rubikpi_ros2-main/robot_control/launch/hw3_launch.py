@@ -3,13 +3,10 @@
   ros2 launch robot_control hw3_launch.py shape:=square side:=1.22 laps:=3
   ros2 launch robot_control hw3_launch.py shape:=octagon side:=0.61 laps:=3
   ros2 launch robot_control hw3_launch.py shape:=none     (robot stays still: noise test)
-  ros2 launch robot_control hw3_launch.py shape:=square calibrate:=true
-      (measure this floor's turn rates with the known tag map; run before the SLAM runs)
 """
 
 from launch import LaunchDescription
 from launch.actions import DeclareLaunchArgument, IncludeLaunchDescription
-from launch.conditions import IfCondition, UnlessCondition
 from launch.launch_description_sources import PythonLaunchDescriptionSource
 from launch.substitutions import LaunchConfiguration, PathJoinSubstitution
 from launch_ros.actions import Node
@@ -22,7 +19,6 @@ def generate_launch_description():
         DeclareLaunchArgument('shape', default_value='square'),
         DeclareLaunchArgument('side', default_value='1.22'),  # meters (4 ft)
         DeclareLaunchArgument('laps', default_value='3'),
-        DeclareLaunchArgument('calibrate', default_value='false'),
     ]
 
     # Same camera setup as HW2: undistorted images using camera_parameter.yaml
@@ -48,21 +44,10 @@ def generate_launch_description():
         package='robot_control',
         executable='slam_drive',
         output='screen',
-        condition=UnlessCondition(LaunchConfiguration('calibrate')),
         parameters=[{
             'shape': LaunchConfiguration('shape'),
             'side': ParameterValue(LaunchConfiguration('side'), value_type=float),
             'laps': ParameterValue(LaunchConfiguration('laps'), value_type=int),
         }])
 
-    calibration = Node(
-        package='robot_control',
-        executable='turn_calibration',
-        output='screen',
-        condition=IfCondition(LaunchConfiguration('calibrate')),
-        parameters=[{
-            'shape': LaunchConfiguration('shape'),
-            'side': ParameterValue(LaunchConfiguration('side'), value_type=float),
-        }])
-
-    return LaunchDescription(args + [camera, apriltag, motor, slam, calibration])
+    return LaunchDescription(args + [camera, apriltag, motor, slam])
