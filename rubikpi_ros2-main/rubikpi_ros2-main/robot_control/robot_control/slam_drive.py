@@ -32,6 +32,7 @@ DRIVE_ANGLE_LIMIT = 0.3    # radians: if pointing further off than this, turn in
 HEADING_GAIN = 1.0         # P gain for steering while driving (same as HW2)
 START_DELAY = 3.0          # seconds to wait after the camera is up before driving
 CORNER_PAUSE = 1.0         # seconds to stop at each corner so the camera gets clear looks
+TURN_PAUSE = 0.5           # seconds to stop after turning in place, before driving
 
 TURN_RATE = (LEFT_TURN_RATE + RIGHT_TURN_RATE) / 2
 DT = 0.05                  # loop period (s)
@@ -39,7 +40,7 @@ CAMERA_OFFSET = 0.09       # meters the camera sits in front of the robot center
 
 # EKF noise settings (see report: how noise was chosen)
 SPEED_NOISE = 0.15         # wheels: speed is off by about 15%
-TURN_NOISE = 0.15          # wheels: turn rate is off by about 15%
+TURN_NOISE = 0.30          # wheels: fast in-place turns are off by up to ~30% (seen in test laps)
 MEAS_NOISE = 0.02          # camera: 2 cm error up close
 MEAS_NOISE_PER_M = 0.03    # camera: plus 3 cm per meter of distance
 OUTLIER_GATE = 13.8        # chi-square 99.9% for 2 numbers: reject anything less likely
@@ -149,6 +150,10 @@ class SlamDrive(Node):
             angle_error = wrap(math.atan2(goal_y - y, goal_x - x) - theta)
             if abs(angle_error) > DRIVE_ANGLE_LIMIT:
                 self.drive(0.0, math.copysign(TURN_RATE, angle_error))
+            elif self.v == 0.0 and self.w != 0.0:
+                # Just finished turning in place: stop briefly so the camera can fix the heading
+                self.pause_until = time.time() + TURN_PAUSE
+                self.drive(0.0, 0.0)
             else:
                 self.drive(DRIVE_SPEED, HEADING_GAIN * angle_error)
             return
