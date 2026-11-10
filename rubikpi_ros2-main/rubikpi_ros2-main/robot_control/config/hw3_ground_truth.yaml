@@ -19,4 +19,4 @@ tags:            # center of each tag
 # Where the robot's center started, and which way it faced (0 = along +x, toward tags 0/7)
 start:
   square:  {x: 0.762, y: 0.762, theta: 0.0}   # 4 ft square centered: 2 ft 6 in from both walls
-  octagon: {x: 0.762, y: 0.762, theta: 0.0}   # same spot as the square: 2 ft 6 in from both walls
+  octagon: {x: 1.067, y: 0.636, theta: 0.0}   # 2 ft octagon centered: 3 ft 6 in along, 2 ft 1 in in
