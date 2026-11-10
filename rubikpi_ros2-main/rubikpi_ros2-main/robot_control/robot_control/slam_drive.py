@@ -36,7 +36,7 @@ START_DELAY = 3.0          # seconds to wait after the camera is up before drivi
 CORNER_PAUSE = 1.0         # seconds to stop at each corner so the camera gets clear looks
 TURN_PAUSE = 0.5           # seconds to stop after a turn, before driving (HW1 stopped 0.3 s)
 TURN_TOLERANCE = math.radians(3)  # a turn stops once the heading is this close to the target
-SLOW_TURN_COMMAND = 0.15   # wheel command for slow turns (HW1's fast turns used 0.30)
+SLOW_TURN_COMMAND = 0.30   # wheel command for turns; this floor needs more push than HW1
 SLOW_TURN_RATE = 0.5       # rad/s guess for slow turns; turn_calibration measures the real one
 CAMERA_DELAY = 0.15        # seconds the camera lags behind; turns stop this much early
 

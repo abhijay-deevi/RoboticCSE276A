@@ -40,8 +40,8 @@ SETTLE_TIME = 0.5      # seconds to stand still before a stationary heading meas
 LOOK_TIME = 1.0        # seconds of camera readings for a stationary heading measurement
 FRESH = 0.3            # seconds: a camera heading newer than this is used directly
 STUCK_TIME = 1.5       # seconds without turning -> raise the slow command
-COMMAND_STEP = 0.03    # how much to raise the slow command when stuck
-MAX_COMMAND = 0.30     # never faster than HW1's fast turns
+COMMAND_STEP = 0.05    # how much to raise the turn command when stuck
+MAX_COMMAND = 0.50     # motor driver maximum
 TURN_TIMEOUT = 20.0    # seconds: give up on one turn after this long
 
 
