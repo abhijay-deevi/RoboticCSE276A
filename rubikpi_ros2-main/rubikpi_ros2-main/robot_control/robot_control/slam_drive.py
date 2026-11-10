@@ -34,7 +34,7 @@ TURN_RATE = (math.pi / 2) / 1.1   # rad/s at TURN_STRENGTH: 90 deg took about 1.
                                   # (1.5 s made the robot overshoot its first corner)
 
 POSITION_TOLERANCE = 0.05  # meters: close enough to a corner
-TURN_DONE = math.radians(8)  # turn in place until pointing this close to the next corner
+TURN_DONE = math.radians(5)  # before each drive burst, turn until pointing this close to the corner
 DRIVE_BURST = 0.8          # seconds of driving per burst
 TURN_BURST = 0.2           # seconds of turning per burst (about 16 deg)
 REST = 0.7                 # seconds stopped after every burst (camera gets still frames)
@@ -168,7 +168,7 @@ class SlamDrive(Node):
             angle_error = wrap(math.atan2(goal_y - y, goal_x - x) - theta)
             if abs(angle_error) > TURN_DONE:
                 # Turn in place toward the corner (the last burst only as long as needed)
-                seconds = max(0.1, min(TURN_BURST, abs(angle_error) / TURN_RATE))
+                seconds = max(DT, min(TURN_BURST, abs(angle_error) / TURN_RATE))
                 self.burst(0.0, math.copysign(TURN_RATE, angle_error), seconds)
             else:
                 # Drive toward the corner and steer (same as HW2); don't overshoot it
