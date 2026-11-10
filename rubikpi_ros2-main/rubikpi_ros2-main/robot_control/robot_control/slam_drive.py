@@ -15,6 +15,7 @@ import os
 import time
 
 import rclpy
+from rclpy.executors import ExternalShutdownException
 from rclpy.node import Node
 from rclpy.time import Time
 from std_msgs.msg import Float32MultiArray
@@ -190,8 +191,8 @@ def main(args=None):
     node = SlamDrive()
     try:
         rclpy.spin(node)
-    except KeyboardInterrupt:
-        pass
+    except (KeyboardInterrupt, ExternalShutdownException):
+        pass  # Ctrl+C here, or the launch file shutting everything down
     if not node.finished:
         node.save_map('landmarks_final.csv')  # stopped early: still keep the map so far
     node.traj_file.close()

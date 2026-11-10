@@ -27,11 +27,14 @@ def generate_launch_description():
             FindPackageShare('robot_vision_camera'), 'launch', 'robot_vision_camera.launch.py'])),
         launch_arguments={'image_rectify': 'true'}.items())
 
-    # Same as HW2, but our HW3 tags have a 5 in (0.127 m) black square
+    # Same as HW2, but our HW3 tags have a 5 in (0.127 m) black square.
+    # decimate 1.0: search the full-resolution image (default 2.0 halves it, and a
+    # 5 in tag 1.7 m away is then only ~16 pixels wide -> mostly missed).
     apriltag = Node(
         package='apriltag_ros',
         executable='apriltag_node',
-        parameters=[{'family': '36h11', 'size': 0.127, 'image_transport': 'compressed'}],
+        parameters=[{'family': '36h11', 'size': 0.127, 'image_transport': 'compressed',
+                     'detector.decimate': 1.0, 'detector.threads': 4}],
         remappings=[('image_rect', '/camera/image_raw'),
                     ('camera_info', '/camera/camera_info')])
 
