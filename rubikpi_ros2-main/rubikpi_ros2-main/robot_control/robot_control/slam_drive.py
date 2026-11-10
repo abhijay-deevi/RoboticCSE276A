@@ -2,6 +2,7 @@
 
 The robot knows nothing about the tags. Its start pose is the map origin (0, 0, 0).
   - every 0.05 s: EKF predict with the commanded speed, then steer to the next corner
+  - corners: timed turns with the HW1 calibration (angle / measured turn rate)
   - every tag detection: EKF update (new tag -> added to the map)
   - logs go to ~/hw3_runs/<shape>_<date_time>/
 
@@ -15,35 +16,35 @@ import os
 import time
 
 import rclpy
+import yaml
 from rclpy.executors import ExternalShutdownException
 from rclpy.node import Node
 from rclpy.time import Time
 from std_msgs.msg import Float32MultiArray
-from sensor_msgs.msg import Imu
 from apriltag_msgs.msg import AprilTagDetectionArray
 from tf2_ros import Buffer, TransformListener
 
 from robot_control.ekf_slam import EkfSlam, wrap
 # HW1 calibration, same as HW2
 from robot_control.motor_control import (DRIVE_COMMAND, DRIVE_SPEED, TURN_COMMAND,
-                                         LEFT_TURN_RATE, RIGHT_TURN_RATE)
+                                         LEFT_TURN_RATE, RIGHT_TURN_RATE,
+                                         LEFT_45_TURN_RATE, RIGHT_45_TURN_RATE)
 
 POSITION_TOLERANCE = 0.05  # meters: close enough to a corner
 DRIVE_ANGLE_LIMIT = 0.3    # radians: if pointing further off than this, turn in place first
 HEADING_GAIN = 1.0         # P gain for steering while driving (same as HW2)
 START_DELAY = 3.0          # seconds to wait after the camera is up before driving
 CORNER_PAUSE = 1.0         # seconds to stop at each corner so the camera gets clear looks
-TURN_PAUSE = 0.5           # seconds to stop after turning in place, before driving
+TURN_PAUSE = 0.5           # seconds to stop after a turn, before driving (HW1 stopped 0.3 s)
 
 TURN_RATE = (LEFT_TURN_RATE + RIGHT_TURN_RATE) / 2
+CALIBRATION_FILE = os.path.expanduser('~/hw3_turn_calibration.yaml')  # from turn_calibration
 DT = 0.05                  # loop period (s)
 CAMERA_OFFSET = 0.09       # meters the camera sits in front of the robot center
 
 # EKF noise settings (see report: how noise was chosen)
 SPEED_NOISE = 0.15         # wheels: speed is off by about 15%
-TURN_NOISE = 0.30          # wheels: fast in-place turns are off by up to ~30% (seen in test laps)
-GYRO_NOISE = 0.05          # gyro: measured turns are off by about 5%
-SIGN_CHECK_ANGLE = 0.3     # radians of the first in-place turn used to learn the IMU's direction
+TURN_NOISE = 0.20          # wheels: timed turns are off by up to ~20%
 MEAS_NOISE = 0.02          # camera: 2 cm error up close
 MEAS_NOISE_PER_M = 0.03    # camera: plus 3 cm per meter of distance
 OUTLIER_GATE = 50.0        # reject only readings ~7 sigma off; 3.7 sigma (13.8) also threw out real
@@ -75,10 +76,9 @@ class SlamDrive(Node):
         self.route = self.corners * self.laps
         self.corner_index = 0
         self.v, self.w = 0.0, 0.0
-        self.imu_yaw = None        # latest heading from the IMU (radians)
-        self.last_imu_yaw = None   # IMU heading at the previous loop
-        self.imu_sign = None       # +1 or -1: does the IMU count left turns as positive?
-        self.sign_check = [0.0, 0.0]  # [commanded turn, IMU turn] during the first in-place turn
+        self.turn_steps_left = 0   # loops left in the current timed turn (HW1-style)
+        self.turn_rates = self.load_turn_rates()
+        self.turn_wheels = 0.0     # +TURN_COMMAND for a left turn, -TURN_COMMAND for right
         self.camera_up_time = None
         self.started = False
         self.pause_until = 0.0
@@ -96,7 +96,6 @@ class SlamDrive(Node):
         self.tf_buffer = Buffer()
         self.tf_listener = TransformListener(self.tf_buffer, self)
         self.create_subscription(AprilTagDetectionArray, '/detections', self.on_detections, 10)
-        self.create_subscription(Imu, 'imu_data', self.on_imu, 10)
         self.motor_pub = self.create_publisher(Float32MultiArray, 'motor_commands', 10)
 
         self.start_time = time.time()
@@ -127,34 +126,6 @@ class SlamDrive(Node):
                 self.get_logger().info(f'New landmark: tag {det.id} '
                                        f'({len(self.ekf.ids)} in map)')
 
-    def on_imu(self, msg):
-        # Yaw (heading) from the IMU orientation quaternion
-        q = msg.orientation
-        self.imu_yaw = math.atan2(2 * (q.w * q.z + q.x * q.y),
-                                                 1 - 2 * (q.y * q.y + q.z * q.z))
-
-    def measured_turn_rate(self):
-        """Turn rate from the gyro over the last loop, or None if there is no IMU data."""
-        if self.imu_yaw is None:
-            return None
-        previous, self.last_imu_yaw = self.last_imu_yaw, self.imu_yaw
-        if previous is None:
-            return None
-        turned = wrap(self.imu_yaw - previous)
-        if self.imu_sign is None:
-            # Learn the IMU's direction from the first in-place turn: compare the
-            # commanded turn direction with the direction the IMU says we turned
-            if self.v == 0.0 and self.w != 0.0:
-                self.sign_check[0] += self.w * DT
-                self.sign_check[1] += turned
-                if abs(self.sign_check[0]) > SIGN_CHECK_ANGLE:
-                    self.imu_sign = 1.0 if self.sign_check[0] * self.sign_check[1] > 0 else -1.0
-                    self.get_logger().info(f'IMU direction learned: sign {self.imu_sign:+.0f} '
-                                           f'(commanded {self.sign_check[0]:.2f} rad, '
-                                           f'IMU {self.sign_check[1]:.2f} rad)')
-            return None  # until then, use the commanded turn
-        return self.imu_sign * turned / DT
-
     # ---------------- Control loop ----------------
 
     def loop(self):
@@ -166,15 +137,8 @@ class SlamDrive(Node):
             self.start_time = time.time()
             self.get_logger().info('GO!')
 
-        # EKF predict: move the estimate by the commanded speed and the turn the gyro measured
-        # (commanded turns were ~20 deg off at corners). Falls back to the commanded turn.
-        w_gyro = self.measured_turn_rate()
-        if w_gyro is not None:
-            self.ekf.turn_noise = GYRO_NOISE
-            self.ekf.predict(self.v, w_gyro, DT)
-        else:
-            self.ekf.turn_noise = TURN_NOISE
-            self.ekf.predict(self.v, self.w, DT)
+        # EKF predict: move the estimate by what we commanded during the last DT
+        self.ekf.predict(self.v, self.w, DT)
 
         x, y, theta = self.ekf.x[0], self.ekf.x[1], self.ekf.x[2]
         lap = self.corner_index // len(self.corners) if self.corners else 0
@@ -184,20 +148,24 @@ class SlamDrive(Node):
         if self.finished or not self.route:
             self.drive(0.0, 0.0)
             return
+        if self.turn_steps_left > 0:
+            # In the middle of a timed turn: keep the wheels turning (same commands as HW1)
+            self.publish_wheels(-self.turn_wheels, self.turn_wheels)
+            self.turn_steps_left -= 1
+            if self.turn_steps_left == 0:
+                self.pause_until = time.time() + TURN_PAUSE  # turn done: stop briefly
+                self.drive(0.0, 0.0)
+            return
         if time.time() < self.pause_until:
             self.drive(0.0, 0.0)  # stopped at a corner, camera is correcting the estimate
             return
 
         goal_x, goal_y = self.route[self.corner_index]
         if math.hypot(goal_x - x, goal_y - y) > POSITION_TOLERANCE:
-            # Same steering as HW2: turn in place if far off, otherwise drive and steer
+            # Pointing far off: timed turn like HW1. Otherwise drive and steer (same as HW2).
             angle_error = wrap(math.atan2(goal_y - y, goal_x - x) - theta)
             if abs(angle_error) > DRIVE_ANGLE_LIMIT:
-                self.drive(0.0, math.copysign(TURN_RATE, angle_error))
-            elif self.v == 0.0 and self.w != 0.0:
-                # Just finished turning in place: stop briefly so the camera can fix the heading
-                self.pause_until = time.time() + TURN_PAUSE
-                self.drive(0.0, 0.0)
+                self.start_turn(angle_error)
             else:
                 self.drive(DRIVE_SPEED, HEADING_GAIN * angle_error)
             return
@@ -215,14 +183,41 @@ class SlamDrive(Node):
             self.save_map('landmarks_final.csv')
             self.get_logger().info(f'Route finished. Results in {self.run_dir}')
 
+    def load_turn_rates(self):
+        """Turn rates (rad/s) for (90 deg, 45 deg) turns: measured on this floor if available."""
+        rates = {'rate_90': (LEFT_TURN_RATE + RIGHT_TURN_RATE) / 2,          # HW1 fallback
+                 'rate_45': (LEFT_45_TURN_RATE + RIGHT_45_TURN_RATE) / 2}
+        if os.path.exists(CALIBRATION_FILE):
+            with open(CALIBRATION_FILE) as f:
+                rates.update({k: v for k, v in (yaml.safe_load(f) or {}).items() if k in rates})
+            self.get_logger().info(f'Turn rates from {CALIBRATION_FILE}: {rates}')
+        else:
+            self.get_logger().warning(f'No {CALIBRATION_FILE}; using HW1 turn rates {rates}')
+        return rates
+
+    def start_turn(self, angle):
+        """Turn in place by `angle`: time = angle / turn rate measured on this floor."""
+        left = angle > 0
+        big = abs(angle) > math.radians(67.5)  # 90-degree rate for big turns, 45 for small
+        rate = self.turn_rates['rate_90' if big else 'rate_45']
+        self.turn_steps_left = max(1, round(abs(angle) / rate / DT))
+        self.turn_wheels = TURN_COMMAND if left else -TURN_COMMAND
+        # What the EKF predicts each loop: the whole turn spread evenly over the turn time
+        self.v, self.w = 0.0, angle / (self.turn_steps_left * DT)
+        self.publish_wheels(-self.turn_wheels, self.turn_wheels)
+        self.turn_steps_left -= 1
+
+    def publish_wheels(self, left, right):
+        msg = Float32MultiArray()
+        msg.data = [float(left), float(right)]
+        self.motor_pub.publish(msg)
+
     def drive(self, v, w):
         # Same conversion as HW2: speed (m/s) and turn rate (rad/s) -> wheel commands
         self.v, self.w = v, w
         forward = v * DRIVE_COMMAND / DRIVE_SPEED
         turn = w * TURN_COMMAND / TURN_RATE
-        msg = Float32MultiArray()
-        msg.data = [float(forward - turn), float(forward + turn)]  # [left, right]
-        self.motor_pub.publish(msg)
+        self.publish_wheels(forward - turn, forward + turn)
 
     def save_map(self, name):
         with open(os.path.join(self.run_dir, name), 'w', newline='') as f:

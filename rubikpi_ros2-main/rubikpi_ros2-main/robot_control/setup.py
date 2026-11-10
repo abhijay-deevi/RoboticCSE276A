@@ -32,6 +32,7 @@ setup(
             'keyboard_control = robot_control.keyboard_control:main',
             'waypoint_control = robot_control.waypoint_control:main',
             'slam_drive = robot_control.slam_drive:main',
+            'turn_calibration = robot_control.turn_calibration:main',
         ],
     },
 )
