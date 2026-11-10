@@ -2,7 +2,7 @@
 
 The robot knows nothing about the tags. Its start pose is the map origin (0, 0, 0).
   - every 0.05 s: EKF predict with the commanded speed, then steer to the next corner
-  - corners: timed turns with the HW1 calibration (angle / measured turn rate)
+  - corners: turn slowly in place, camera on, and stop once facing the next corner (within 3 deg)
   - every tag detection: EKF update (new tag -> added to the map)
   - logs go to ~/hw3_runs/<shape>_<date_time>/
 
@@ -27,8 +27,7 @@ from tf2_ros import Buffer, TransformListener
 from robot_control.ekf_slam import EkfSlam, wrap
 # HW1 calibration, same as HW2
 from robot_control.motor_control import (DRIVE_COMMAND, DRIVE_SPEED, TURN_COMMAND,
-                                         LEFT_TURN_RATE, RIGHT_TURN_RATE,
-                                         LEFT_45_TURN_RATE, RIGHT_45_TURN_RATE)
+                                         LEFT_TURN_RATE, RIGHT_TURN_RATE)
 
 POSITION_TOLERANCE = 0.05  # meters: close enough to a corner
 DRIVE_ANGLE_LIMIT = 0.3    # radians: if pointing further off than this, turn in place first
@@ -36,6 +35,10 @@ HEADING_GAIN = 1.0         # P gain for steering while driving (same as HW2)
 START_DELAY = 3.0          # seconds to wait after the camera is up before driving
 CORNER_PAUSE = 1.0         # seconds to stop at each corner so the camera gets clear looks
 TURN_PAUSE = 0.5           # seconds to stop after a turn, before driving (HW1 stopped 0.3 s)
+TURN_TOLERANCE = math.radians(3)  # a turn stops once the heading is this close to the target
+SLOW_TURN_COMMAND = 0.15   # wheel command for slow turns (HW1's fast turns used 0.30)
+SLOW_TURN_RATE = 0.5       # rad/s guess for slow turns; turn_calibration measures the real one
+CAMERA_DELAY = 0.15        # seconds the camera lags behind; turns stop this much early
 
 TURN_RATE = (LEFT_TURN_RATE + RIGHT_TURN_RATE) / 2
 CALIBRATION_FILE = os.path.expanduser('~/hw3_turn_calibration.yaml')  # from turn_calibration
@@ -44,7 +47,7 @@ CAMERA_OFFSET = 0.09       # meters the camera sits in front of the robot center
 
 # EKF noise settings (see report: how noise was chosen)
 SPEED_NOISE = 0.15         # wheels: speed is off by about 15%
-TURN_NOISE = 0.20          # wheels: timed turns are off by up to ~20%
+TURN_NOISE = 0.20          # wheels: turn rate is off by up to ~20% (the camera corrects it)
 MEAS_NOISE = 0.02          # camera: 2 cm error up close
 MEAS_NOISE_PER_M = 0.03    # camera: plus 3 cm per meter of distance
 OUTLIER_GATE = 50.0        # reject only readings ~7 sigma off; 3.7 sigma (13.8) also threw out real
@@ -76,9 +79,8 @@ class SlamDrive(Node):
         self.route = self.corners * self.laps
         self.corner_index = 0
         self.v, self.w = 0.0, 0.0
-        self.turn_steps_left = 0   # loops left in the current timed turn (HW1-style)
-        self.turn_rates = self.load_turn_rates()
-        self.turn_wheels = 0.0     # +TURN_COMMAND for a left turn, -TURN_COMMAND for right
+        self.turning = False       # turning in place toward the next corner?
+        self.slow_command, self.slow_rate = self.load_slow_turn()
         self.camera_up_time = None
         self.started = False
         self.pause_until = 0.0
@@ -108,9 +110,6 @@ class SlamDrive(Node):
     def on_detections(self, msg):
         if self.camera_up_time is None:
             self.camera_up_time = time.time()
-        if self.v == 0.0 and self.w != 0.0:
-            return  # spinning in place: blurry, late images; rely on the prediction
-
         for det in msg.detections:
             try:
                 t = self.tf_buffer.lookup_transform('camera_frame', f'tag36h11:{det.id}', Time())
@@ -148,24 +147,26 @@ class SlamDrive(Node):
         if self.finished or not self.route:
             self.drive(0.0, 0.0)
             return
-        if self.turn_steps_left > 0:
-            # In the middle of a timed turn: keep the wheels turning (same commands as HW1)
-            self.publish_wheels(-self.turn_wheels, self.turn_wheels)
-            self.turn_steps_left -= 1
-            if self.turn_steps_left == 0:
-                self.pause_until = time.time() + TURN_PAUSE  # turn done: stop briefly
-                self.drive(0.0, 0.0)
-            return
         if time.time() < self.pause_until:
             self.drive(0.0, 0.0)  # stopped at a corner, camera is correcting the estimate
             return
 
         goal_x, goal_y = self.route[self.corner_index]
+        angle_error = wrap(math.atan2(goal_y - y, goal_x - x) - theta)
+        if self.turning:
+            # Turning slowly with the camera on: stop as soon as we face the next corner
+            if abs(angle_error) <= TURN_TOLERANCE + self.slow_rate * CAMERA_DELAY:
+                self.turning = False
+                self.pause_until = time.time() + TURN_PAUSE
+                self.drive(0.0, 0.0)
+            else:
+                self.slow_turn(angle_error)
+            return
         if math.hypot(goal_x - x, goal_y - y) > POSITION_TOLERANCE:
-            # Pointing far off: timed turn like HW1. Otherwise drive and steer (same as HW2).
-            angle_error = wrap(math.atan2(goal_y - y, goal_x - x) - theta)
+            # Pointing far off: slow turn in place. Otherwise drive and steer (same as HW2).
             if abs(angle_error) > DRIVE_ANGLE_LIMIT:
-                self.start_turn(angle_error)
+                self.turning = True
+                self.slow_turn(angle_error)
             else:
                 self.drive(DRIVE_SPEED, HEADING_GAIN * angle_error)
             return
@@ -183,29 +184,25 @@ class SlamDrive(Node):
             self.save_map('landmarks_final.csv')
             self.get_logger().info(f'Route finished. Results in {self.run_dir}')
 
-    def load_turn_rates(self):
-        """Turn rates (rad/s) for (90 deg, 45 deg) turns: measured on this floor if available."""
-        rates = {'rate_90': (LEFT_TURN_RATE + RIGHT_TURN_RATE) / 2,          # HW1 fallback
-                 'rate_45': (LEFT_45_TURN_RATE + RIGHT_45_TURN_RATE) / 2}
+    def load_slow_turn(self):
+        """Slow-turn wheel command and turn rate (rad/s), measured on this floor if available."""
+        command, rate = SLOW_TURN_COMMAND, SLOW_TURN_RATE
         if os.path.exists(CALIBRATION_FILE):
             with open(CALIBRATION_FILE) as f:
-                rates.update({k: v for k, v in (yaml.safe_load(f) or {}).items() if k in rates})
-            self.get_logger().info(f'Turn rates from {CALIBRATION_FILE}: {rates}')
+                saved = yaml.safe_load(f) or {}
+            command, rate = saved.get('slow_command', command), saved.get('slow_rate', rate)
+            self.get_logger().info(f'Slow turn from {CALIBRATION_FILE}: command {command}, '
+                                   f'{rate:.3f} rad/s')
         else:
-            self.get_logger().warning(f'No {CALIBRATION_FILE}; using HW1 turn rates {rates}')
-        return rates
+            self.get_logger().warning(f'No {CALIBRATION_FILE}; slow turn guess: command '
+                                      f'{command}, {rate} rad/s')
+        return command, rate
 
-    def start_turn(self, angle):
-        """Turn in place by `angle`: time = angle / turn rate measured on this floor."""
-        left = angle > 0
-        big = abs(angle) > math.radians(67.5)  # 90-degree rate for big turns, 45 for small
-        rate = self.turn_rates['rate_90' if big else 'rate_45']
-        self.turn_steps_left = max(1, round(abs(angle) / rate / DT))
-        self.turn_wheels = TURN_COMMAND if left else -TURN_COMMAND
-        # What the EKF predicts each loop: the whole turn spread evenly over the turn time
-        self.v, self.w = 0.0, angle / (self.turn_steps_left * DT)
-        self.publish_wheels(-self.turn_wheels, self.turn_wheels)
-        self.turn_steps_left -= 1
+    def slow_turn(self, angle_error):
+        """Turn in place slowly toward the target (left if angle_error > 0)."""
+        direction = 1.0 if angle_error > 0 else -1.0
+        self.v, self.w = 0.0, direction * self.slow_rate  # what the EKF predicts
+        self.publish_wheels(-direction * self.slow_command, direction * self.slow_command)
 
     def publish_wheels(self, left, right):
         msg = Float32MultiArray()
