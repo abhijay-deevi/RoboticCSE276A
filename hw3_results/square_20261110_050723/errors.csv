@@ -1,0 +1,3 @@
+map,num_landmarks,avg_error_m,tag_0_error_m,tag_1_error_m,tag_2_error_m,tag_3_error_m,tag_4_error_m,tag_5_error_m,tag_6_error_m,tag_7_error_m
+landmarks_lap1.csv,6,0.2169,0.0454,,0.1724,0.5539,0.1770,,0.1203,0.2322
+landmarks_final.csv,6,0.2169,0.0454,,0.1724,0.5539,0.1770,,0.1203,0.2322
