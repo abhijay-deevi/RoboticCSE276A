@@ -1,12 +1,6 @@
-# HW3 ground truth, measured by hand with a tape measure. NOT used by the robot,
-# only by scripts/plot_slam.py to compare the robot's map with the real one.
-#
-# World frame: origin = corner between the tag 2/1 wall and the tag 3/4 wall (see our
-# sketch). x along the tag 2/1 wall, y along the tag 3/4 wall. Meters and radians.
-# Area: 9 ft x 9 ft (2.743 m). Each tag is 2 ft (0.610 m) from its nearest corner,
-# so on each wall the tags are at 2 ft and 7 ft (2.134 m).
+# its basically just a 9x9 and we have 2 feet from each corner that's where we put the tags
 
-tags:            # center of each tag
+tags:           
   2: {x: 0.610, y: 0.0}     # bottom wall (y = 0)
   1: {x: 2.134, y: 0.0}
   0: {x: 2.743, y: 0.610}   # right wall (x = 9 ft)
@@ -16,7 +10,7 @@ tags:            # center of each tag
   4: {x: 0.0,   y: 2.134}   # left wall (x = 0)
   3: {x: 0.0,   y: 0.610}
 
-# Where the robot's center started, and which way it faced (0 = along +x, toward tags 0/7)
+# starting point estimated
 start:
-  square:  {x: 0.762, y: 0.762, theta: 0.0}   # 4 ft square centered: 2 ft 6 in from both walls
-  octagon: {x: 1.067, y: 0.610, theta: 0.0}   # 3 ft 6 in along the tag 2 wall, 2 ft in from it
+  square:  {x: 0.762, y: 0.762, theta: 0.0}   
+  octagon: {x: 1.067, y: 0.610, theta: 0.0}   

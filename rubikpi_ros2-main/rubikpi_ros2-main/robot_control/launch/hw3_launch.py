@@ -1,10 +1,3 @@
-"""HW3: camera, AprilTag detector, motor driver and the SLAM driver in one command.
-
-  ros2 launch robot_control hw3_launch.py shape:=square side:=1.22 laps:=3
-  ros2 launch robot_control hw3_launch.py shape:=octagon side:=0.61 laps:=3
-  ros2 launch robot_control hw3_launch.py shape:=none     (robot stays still: noise test)
-"""
-
 from launch import LaunchDescription
 from launch.actions import DeclareLaunchArgument, IncludeLaunchDescription
 from launch.launch_description_sources import PythonLaunchDescriptionSource
@@ -15,21 +8,19 @@ from launch_ros.substitutions import FindPackageShare
 
 
 def generate_launch_description():
-    args = [
+    args = [ # basically just sets info for the run
         DeclareLaunchArgument('shape', default_value='square'),
         DeclareLaunchArgument('side', default_value='1.22'),  # meters (4 ft)
         DeclareLaunchArgument('laps', default_value='3'),
     ]
 
-    # Same camera setup as HW2: undistorted images using camera_parameter.yaml
+    # Same camera setup as HW2
     camera = IncludeLaunchDescription(
         PythonLaunchDescriptionSource(PathJoinSubstitution([
             FindPackageShare('robot_vision_camera'), 'launch', 'robot_vision_camera.launch.py'])),
         launch_arguments={'image_rectify': 'true'}.items())
 
-    # Same as HW2, but our HW3 tags have a 4 in (0.1016 m) black square (measured).
-    # decimate 1.0: search the full-resolution image (default 2.0 halves it, and a
-    # 5 in tag 1.7 m away is then only ~16 pixels wide -> mostly missed).
+    # Same as HW2 we fixed the inches of the tag since it was wrong initially
     apriltag = Node(
         package='apriltag_ros',
         executable='apriltag_node',
@@ -40,7 +31,7 @@ def generate_launch_description():
 
     motor = Node(package='robot_control', executable='motor_control', output='screen')
 
-    slam = Node(
+    slam = Node( # this handles the 3 arguments from bfore
         package='robot_control',
         executable='slam_drive',
         output='screen',
