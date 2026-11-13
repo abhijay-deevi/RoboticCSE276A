@@ -1,15 +1,3 @@
-"""Plot a HW3 SLAM run and compare its map with the measured ground truth.
-
-Usage (on your laptop, after copying the run folder off the robot):
-    python plot_slam.py ~/hw3_runs/square_20261110_153000
-
-The robot's map is in its own frame (start pose = origin). Using the measured start pose
-from hw3_ground_truth.yaml, it is moved into the world frame and compared tag by tag.
-Saves slam_map.png and errors.csv in the run folder.
-
-For a noise test run (shape:=none) it prints how much each tag's measurement jitters.
-"""
-
 import csv
 import glob
 import math
@@ -33,7 +21,6 @@ def read_csv(name):
         return list(csv.DictReader(f))
 
 
-# ---------------- Noise test: robot standing still ----------------
 if shape == 'none':
     rows = read_csv('measurements.csv')
     for tag_id in sorted({int(r['tag_id']) for r in rows}):
@@ -43,7 +30,6 @@ if shape == 'none':
               f'std forward {f.std() * 100:.2f} cm, std left {l.std() * 100:.2f} cm')
     sys.exit()
 
-# ---------------- Move the robot's map into the world frame ----------------
 with open(truth_file) as f:
     truth = yaml.safe_load(f)
 tags = {int(k): (v['x'], v['y']) for k, v in truth['tags'].items()}
@@ -65,7 +51,7 @@ def read_map(name):
     return out
 
 
-# ---------------- Landmark error after each lap ----------------
+# landmark error
 lap_files = sorted(glob.glob(os.path.join(run_dir, 'landmarks_lap*.csv')),
                    key=lambda p: int(re.search(r'lap(\d+)', p).group(1)))
 results = []
@@ -85,7 +71,7 @@ with open(os.path.join(run_dir, 'errors.csv'), 'w', newline='') as f:
         writer.writerow([name, n, f'{avg:.4f}'] + [f'{errors[i]:.4f}' if i in errors else ''
                                                   for i in sorted(tags)])
 
-# ---------------- Plot: trajectory + map with covariance ----------------
+# plot trajector
 traj = read_csv('trajectory.csv')
 dots, next_time = [], 0.0
 for r in traj:  # one dot every 0.5 s

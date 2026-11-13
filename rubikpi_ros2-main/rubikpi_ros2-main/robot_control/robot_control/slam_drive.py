@@ -195,7 +195,6 @@ class SlamDrive(Node):
         self.motor_pub.publish(msg)
 
     def drive(self, v, w):
-        # Same idea as HW2: speed (m/s) and turn rate (rad/s) -> wheel commands
         self.v, self.w = v, w
         forward = v * DRIVE_COMMAND / DRIVE_SPEED
         turn = w * TURN_STRENGTH / TURN_RATE
@@ -218,9 +217,9 @@ def main(args=None):
     try:
         rclpy.spin(node)
     except (KeyboardInterrupt, ExternalShutdownException):
-        pass  # Ctrl+C here, or the launch file shutting everything down
+        pass 
     if not node.finished:
-        node.save_map('landmarks_final.csv')  # stopped early: still keep the map so far
+        node.save_map('landmarks_final.csv')  #still keep the map so far
     node.traj_file.close()
     node.meas_file.close()
     node.destroy_node()
