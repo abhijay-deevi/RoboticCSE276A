@@ -25,34 +25,30 @@ from apriltag_msgs.msg import AprilTagDetectionArray
 from tf2_ros import Buffer, TransformListener
 
 from robot_control.ekf_slam import EkfSlam, wrap
-# Measured on THIS floor with our forward/turn tests (HW1's numbers were for another floor)
-# Slow settings: faster ones (0.40 forward, 0.50 turns) left the camera too few clear frames
-DRIVE_COMMAND = 0.20              # wheel command for driving forward
-DRIVE_SPEED = 1.22 / 5.8          # m/s at DRIVE_COMMAND: 4 ft took 5.8 s
-TURN_STRENGTH = 0.45              # wheel command for turning in place
-TURN_RATE = (math.pi / 2) / 1.25  # rad/s at TURN_STRENGTH in short bursts: 90 deg ~ 1.25 s
-                                  # (1.5 s overshot the first corner; with 1.1 s the camera kept
-                                  # finding the robot further right than predicted after left turns)
+# Measured on ALLEN KITCHEN FLOOR BY THE ISLAND
+DRIVE_COMMAND = 0.20              # Speed used to drive forward
+DRIVE_SPEED = 1.22 / 5.8          # Took 5.8 seconds to drive 1.22 meters
+TURN_STRENGTH = 0.45              # Speed used for turning
+TURN_RATE = (math.pi / 2) / 1.25  # Takes about 1.25 seconds to turn 90 degrees
 
-POSITION_TOLERANCE = 0.05  # meters: close enough to a corner
-TURN_DONE = math.radians(3)  # after every move, turn (left or right) until this close to the corner
-DRIVE_BURST = 0.8          # seconds of driving per burst
-TURN_BURST = 0.2           # seconds of turning per burst (about 16 deg)
-REST = 0.7                 # seconds stopped after every burst (camera gets still frames)
-HEADING_GAIN = 1.0         # P gain for steering while driving (same as HW2)
-START_DELAY = 3.0          # seconds to wait after the camera is up before driving
-CORNER_PAUSE = 1.0         # seconds to stop at each corner so the camera gets clear looks
+POSITION_TOLERANCE = 0.05         # Stop when within 5 cm of the target
+TURN_DONE = math.radians(3)       # Stop turning when within 3 degrees
+DRIVE_BURST = 0.8                 # Drive for 0.8 seconds at a time
+TURN_BURST = 0.2                  # Turn for 0.2 seconds at a time
+REST = 0.7                        # Wait between movements
+HEADING_GAIN = 1.0                # How much to correct the direction while driving
+START_DELAY = 3.0                 # Give the camera time to start
+CORNER_PAUSE = 1.0                # Wait at each corner before moving again
 
-DT = 0.05                  # loop period (s)
-CAMERA_OFFSET = 0.09       # meters the camera sits in front of the robot center
+DT = 0.05                         # Time between updates
+CAMERA_OFFSET = 0.09              # Camera is 9 cm in front of the robot center
 
-# EKF noise settings (see report: how noise was chosen)
-SPEED_NOISE = 0.15         # wheels: speed is off by about 15%
-TURN_NOISE = 0.20          # wheels: timed turns are off by up to ~20%
-MEAS_NOISE = 0.02          # camera: 2 cm error up close
-MEAS_NOISE_PER_M = 0.03    # camera: plus 3 cm per meter of distance
-OUTLIER_GATE = 50.0        # reject only readings ~7 sigma off; 3.7 sigma (13.8) also threw out real
-                           # drift corrections in our test laps
+# EKF noise values
+SPEED_NOISE = 0.15                # Assume about 15% error in driving speed
+TURN_NOISE = 0.20                 # Assume about 20% error in turning
+MEAS_NOISE = 0.02                 # Assume 2 cm camera error
+MEAS_NOISE_PER_M = 0.03           # Increase camera error with distance
+OUTLIER_GATE = 50.0               # Ignore camera readings that are too far off
 
 
 def path_corners(shape, side):
@@ -87,7 +83,7 @@ class SlamDrive(Node):
         self.pause_until = 0.0
         self.finished = False
 
-        # Log folder for this run
+        # slog folder for this run
         self.run_dir = os.path.expanduser(
             f"~/hw3_runs/{self.shape}_{time.strftime('%Y%m%d_%H%M%S')}")
         os.makedirs(self.run_dir)
@@ -106,19 +102,18 @@ class SlamDrive(Node):
         self.get_logger().info(f'SLAM {self.shape}, side {side} m, {self.laps} laps. '
                                f'Logging to {self.run_dir}. Waiting for camera...')
 
-    # ---------------- Measurements ----------------
 
     def on_detections(self, msg):
         if self.camera_up_time is None:
             self.camera_up_time = time.time()
         if self.v == 0.0 and self.w != 0.0:
-            return  # turning in place: blurry, late images; rely on the prediction
+            return 
         for det in msg.detections:
             try:
                 t = self.tf_buffer.lookup_transform('camera_frame', f'tag36h11:{det.id}', Time())
             except Exception:
                 continue
-            # Camera frame: z = forward, x = right. Robot frame: forward, left (from robot center).
+            # z forward x right
             forward = t.transform.translation.z + CAMERA_OFFSET
             left = -t.transform.translation.x
             result = self.ekf.update(det.id, forward, left)
@@ -128,7 +123,6 @@ class SlamDrive(Node):
                 self.get_logger().info(f'New landmark: tag {det.id} '
                                        f'({len(self.ekf.ids)} in map)')
 
-    # ---------------- Control loop ----------------
 
     def loop(self):
         if not self.started:
@@ -139,7 +133,7 @@ class SlamDrive(Node):
             self.start_time = time.time()
             self.get_logger().info('GO!')
 
-        # EKF predict: move the estimate by what we commanded during the last DT
+        # EKF predict
         self.ekf.predict(self.v, self.w, DT)
 
         x, y, theta = self.ekf.x[0], self.ekf.x[1], self.ekf.x[2]
@@ -162,7 +156,7 @@ class SlamDrive(Node):
             self.drive(0.0, 0.0)  # stopped, camera is correcting the estimate
             return
 
-        # Stopped and rested: decide the next short move from the corrected estimate
+        # stopped and rested deciding now
         goal_x, goal_y = self.route[self.corner_index]
         distance = math.hypot(goal_x - x, goal_y - y)
         if distance > POSITION_TOLERANCE:
@@ -177,7 +171,7 @@ class SlamDrive(Node):
                 self.burst(DRIVE_SPEED, HEADING_GAIN * angle_error, seconds)
             return
 
-        # Reached a corner: stop for a moment, then head to the next one
+        # corner stopper code
         self.corner_index += 1
         self.pause_until = time.time() + CORNER_PAUSE
         self.drive(0.0, 0.0)
