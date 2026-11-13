@@ -1,16 +1,3 @@
-"""HW3: drive a square or octagon while running EKF SLAM on the AprilTags.
-
-The robot knows nothing about the tags. Its start pose is the map origin (0, 0, 0).
-  - every 0.05 s: EKF predict with the commanded speed, then steer to the next corner
-  - moves in short bursts with stops in between (slow overall; the camera gets still frames
-    at every stop): turn bursts until facing the next corner, then drive bursts toward it
-  - every tag detection: EKF update (new tag -> added to the map)
-  - logs go to ~/hw3_runs/<shape>_<date_time>/
-
-Parameters: shape (square | octagon | none), side (meters), laps
-  shape:=none keeps the robot still and only logs measurements (for measuring noise).
-"""
-
 import csv
 import math
 import os
@@ -162,11 +149,11 @@ class SlamDrive(Node):
         if distance > POSITION_TOLERANCE:
             angle_error = wrap(math.atan2(goal_y - y, goal_x - x) - theta)
             if abs(angle_error) > TURN_DONE:
-                # Turn in place toward the corner (the last burst only as long as needed)
+                # turn in palce toward corner
                 seconds = max(DT, min(TURN_BURST, abs(angle_error) / TURN_RATE))
                 self.burst(0.0, math.copysign(TURN_RATE, angle_error), seconds)
             else:
-                # Drive toward the corner and steer (same as HW2); don't overshoot it
+                # drive toward corner
                 seconds = max(0.1, min(DRIVE_BURST, distance / DRIVE_SPEED))
                 self.burst(DRIVE_SPEED, HEADING_GAIN * angle_error, seconds)
             return
