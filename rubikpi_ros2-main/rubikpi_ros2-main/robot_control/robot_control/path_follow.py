@@ -25,12 +25,14 @@ from ament_index_python.packages import get_package_share_directory
 from robot_control.ekf_slam import EkfSlam, wrap
 from robot_control.path_planner import load_map, plan, path_length
 # same floor-tested driving settings and noise as HW3
-from robot_control.slam_drive import (DRIVE_COMMAND, DRIVE_SPEED, TURN_STRENGTH, TURN_RATE,
+from robot_control.slam_drive import (DRIVE_COMMAND, DRIVE_SPEED, TURN_STRENGTH,
                                       POSITION_TOLERANCE, DRIVE_BURST, TURN_BURST,
                                       REST, HEADING_GAIN, START_DELAY, CORNER_PAUSE, DT,
                                       CAMERA_OFFSET, SPEED_NOISE, TURN_NOISE, MEAS_NOISE,
                                       MEAS_NOISE_PER_M, OUTLIER_GATE)
 
+TURN_RATE = math.pi / 1.25         # turn test on this floor: bursts that HW3's number counted as
+                                   # 90 deg turned 180 deg, so 90 deg takes ~0.63 s (rad/s)
 START_POSITION_STD = 0.03          # robot placed by hand: within about 3 cm
 START_ANGLE_STD = math.radians(3)  # and about 3 degrees
 TURN_IN_PLACE = math.radians(10)   # only turn in place when further off than this
