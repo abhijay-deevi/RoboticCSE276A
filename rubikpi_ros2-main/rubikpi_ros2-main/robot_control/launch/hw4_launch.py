@@ -15,7 +15,9 @@ from launch_ros.substitutions import FindPackageShare
 def generate_launch_description():
     path = DeclareLaunchArgument('path', default_value='safe')
 
-    # Same camera and tag detector as HW3 (4 in tags)
+    # Same camera as HW3 (4 in tags). The tag detector searches a half-size image with 2 cores
+    # (HW3 used full size, 4 cores): with the processor fully loaded, the robot's computer kept
+    # restarting once the motors ran too. Shorter tag range is fine since HW4 only needs nearby tags.
     camera = IncludeLaunchDescription(
         PythonLaunchDescriptionSource(PathJoinSubstitution([
             FindPackageShare('robot_vision_camera'), 'launch', 'robot_vision_camera.launch.py'])),
@@ -25,7 +27,7 @@ def generate_launch_description():
         package='apriltag_ros',
         executable='apriltag_node',
         parameters=[{'family': '36h11', 'size': 0.1016, 'image_transport': 'compressed',
-                     'detector.decimate': 1.0, 'detector.threads': 4}],
+                     'detector.decimate': 2.0, 'detector.threads': 2}],
         remappings=[('image_rect', '/camera/image_raw'),
                     ('camera_info', '/camera/camera_info')])
 
