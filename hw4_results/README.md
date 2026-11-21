@@ -31,7 +31,7 @@ Plots (`path_planner.py hw4_results <run folders>`): planned path in blue, drive
 | `safe_..._061955` | Turns cut short: commands were sent once per turn and motor_control's 0.15 s safety stop halted the wheels, so the robot drove nearly straight | Re-send the command every 0.05 s |
 | `safe_..._062242` | One long continuous turn spun much faster than the burst-measured turn rate and overshot ~45 deg, toward the box | Turn in short bursts |
 | turn test | Bursts that the HW3 turn rate counted as 90 deg actually turned 180 deg | Turn rate doubled (90 deg in ~0.63 s) |
-| `safe_..._064340` | Late camera frames after a turn "undid" the turn in the EKF, causing extra turning | Ignore images taken before the last turn ended |
+| a 06:43 safe run (2 s saved, not copied here) | Late camera frames after a turn "undid" the turn in the EKF, causing extra turning | Ignore images taken before the last turn ended |
 | `safe_..._065226` to `safe_..._092147`, `short_*` | The robot's computer restarted 2-22 s into runs, only when the camera processing and motors ran together | Lighter tag detection (half-size image, 2 cores) and 75% drive speed; the final run then finished with no restart |
 
 Folders with empty files (`safe_..._061419`, `safe_..._062832`) are runs cut off before anything was saved to disk.
