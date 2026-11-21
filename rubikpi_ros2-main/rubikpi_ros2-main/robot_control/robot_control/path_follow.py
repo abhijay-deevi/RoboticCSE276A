@@ -35,6 +35,7 @@ from robot_control.slam_drive import (DRIVE_COMMAND, DRIVE_SPEED, TURN_STRENGTH,
 
 TURN_RATE = math.pi / 1.25         # turn test on this floor: bursts that HW3's number counted as
                                    # 90 deg turned 180 deg, so 90 deg takes ~0.63 s (rad/s)
+SLOW_SPEED = 0.75 * DRIVE_SPEED    # wheel command 0.15 instead of 0.20: less motor load
 START_POSITION_STD = 0.03          # robot placed by hand: within about 3 cm
 START_ANGLE_STD = math.radians(3)  # and about 3 degrees
 TURN_IN_PLACE = math.radians(10)   # only turn in place when further off than this
@@ -191,8 +192,8 @@ class PathFollow(Node):
                 seconds = max(MIN_TURN, min(TURN_BURST, abs(angle_error) / TURN_RATE))
                 self.burst(0.0, math.copysign(TURN_RATE, angle_error), seconds)
             else:
-                seconds = max(0.1, min(DRIVE_BURST, distance / DRIVE_SPEED))
-                self.burst(DRIVE_SPEED, HEADING_GAIN * angle_error, seconds)
+                seconds = max(0.1, min(DRIVE_BURST, distance / SLOW_SPEED))
+                self.burst(SLOW_SPEED, HEADING_GAIN * angle_error, seconds)
             return
 
         # Reached a waypoint
