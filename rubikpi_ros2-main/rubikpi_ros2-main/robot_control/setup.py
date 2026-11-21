@@ -11,8 +11,8 @@ setup(
         ('share/ament_index/resource_index/packages',
             ['resource/' + package_name]),
         ('share/' + package_name, ['package.xml']),
-        ('share/' + package_name + '/launch', ['launch/robot_teleop_launch.py', 'launch/hw2_launch.py', 'launch/hw3_launch.py']),
-        ('share/' + package_name + '/config', ['config/tag_map.yaml', 'config/hw3_ground_truth.yaml']),
+        ('share/' + package_name + '/launch', ['launch/robot_teleop_launch.py', 'launch/hw2_launch.py', 'launch/hw3_launch.py', 'launch/hw4_launch.py']),
+        ('share/' + package_name + '/config', ['config/tag_map.yaml', 'config/hw3_ground_truth.yaml', 'config/hw4_map.yaml']),
     ],
     install_requires=[
         'setuptools',
@@ -32,6 +32,7 @@ setup(
             'keyboard_control = robot_control.keyboard_control:main',
             'waypoint_control = robot_control.waypoint_control:main',
             'slam_drive = robot_control.slam_drive:main',
+            'path_follow = robot_control.path_follow:main',
         ],
     },
 )
