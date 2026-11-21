@@ -26,13 +26,16 @@ from robot_control.ekf_slam import EkfSlam, wrap
 from robot_control.path_planner import load_map, plan, path_length
 # same floor-tested driving settings and noise as HW3
 from robot_control.slam_drive import (DRIVE_COMMAND, DRIVE_SPEED, TURN_STRENGTH, TURN_RATE,
-                                      POSITION_TOLERANCE, TURN_DONE, DRIVE_BURST, TURN_BURST,
+                                      POSITION_TOLERANCE, DRIVE_BURST, TURN_BURST,
                                       REST, HEADING_GAIN, START_DELAY, CORNER_PAUSE, DT,
                                       CAMERA_OFFSET, SPEED_NOISE, TURN_NOISE, MEAS_NOISE,
                                       MEAS_NOISE_PER_M, OUTLIER_GATE)
 
 START_POSITION_STD = 0.03          # robot placed by hand: within about 3 cm
 START_ANGLE_STD = math.radians(3)  # and about 3 degrees
+TURN_IN_PLACE = math.radians(10)   # only turn in place when further off than this
+MIN_TURN = 0.1                     # shortest turn burst that actually moves the wheels (s)
+GIVE_UP = 20.0                     # stop if no tags seen / no progress for this long (s)
 
 
 class PathFollow(Node):
@@ -61,6 +64,14 @@ class PathFollow(Node):
         self.camera_up_time = None
         self.started = False
         self.finished = False
+        # for the 2 s status line and the 20 s give-up checks
+        self.frames = 0
+        self.frames_recent = 0
+        self.seen = {}
+        self.last_seen_time = time.time()
+        self.last_status = 0.0
+        self.best_distance = math.inf
+        self.progress_time = time.time()
 
         self.run_dir = os.path.expanduser(
             f"~/hw4_runs/{self.kind}_{time.strftime('%Y%m%d_%H%M%S')}")
@@ -92,6 +103,11 @@ class PathFollow(Node):
     def on_detections(self, msg):
         if self.camera_up_time is None:
             self.camera_up_time = time.time()
+        self.frames += 1
+        for det in msg.detections:
+            if det.id in self.ekf.ids:
+                self.last_seen_time = time.time()
+                self.seen[det.id] = self.seen.get(det.id, 0) + 1
         if self.v == 0.0 and self.w != 0.0:
             return  # turning in place: blurry, late images
         for det in msg.detections:
@@ -116,6 +132,7 @@ class PathFollow(Node):
                 return
             self.started = True
             self.start_time = time.time()
+            self.last_seen_time = self.progress_time = self.start_time
             self.get_logger().info('GO!')
 
         self.ekf.predict(self.v, self.w, DT)
@@ -127,6 +144,14 @@ class PathFollow(Node):
             self.drive(0.0, 0.0)
             return
         now = time.time()
+        if now - self.last_status >= 2.0:
+            self.status(now, x, y, theta)
+        if now - self.last_seen_time > GIVE_UP:
+            return self.give_up(f'no tags seen for {GIVE_UP:.0f} s (camera frames in the last 2 s: '
+                                f'{self.frames_recent}). Tags are too far, too dark, or out of view.')
+        if now - self.progress_time > GIVE_UP:
+            return self.give_up(f'no progress toward waypoint {self.waypoint_index + 1} for '
+                                f'{GIVE_UP:.0f} s (stuck turning or driving in place)')
         if now < self.burst_until:
             self.drive(self.v, self.w)
             return
@@ -140,10 +165,14 @@ class PathFollow(Node):
 
         goal_x, goal_y = self.route[self.waypoint_index]
         distance = math.hypot(goal_x - x, goal_y - y)
+        if distance < self.best_distance - 0.02:  # got at least 2 cm closer
+            self.best_distance, self.progress_time = distance, now
         if distance > POSITION_TOLERANCE:
             angle_error = wrap(math.atan2(goal_y - y, goal_x - x) - theta)
-            if abs(angle_error) > TURN_DONE:
-                seconds = max(DT, min(TURN_BURST, abs(angle_error) / TURN_RATE))
+            # small errors are fixed by steering while driving; a tiny turn in place doesn't
+            # move the wheels at all, so it would just repeat forever
+            if abs(angle_error) > TURN_IN_PLACE:
+                seconds = max(MIN_TURN, min(TURN_BURST, abs(angle_error) / TURN_RATE))
                 self.burst(0.0, math.copysign(TURN_RATE, angle_error), seconds)
             else:
                 seconds = max(0.1, min(DRIVE_BURST, distance / DRIVE_SPEED))
@@ -154,6 +183,7 @@ class PathFollow(Node):
         self.get_logger().info(f'Waypoint {self.waypoint_index + 1}/{len(self.route)} reached '
                                f'at ({x:.2f}, {y:.2f})')
         self.waypoint_index += 1
+        self.best_distance, self.progress_time = math.inf, now
         self.pause_until = time.time() + CORNER_PAUSE
         self.drive(0.0, 0.0)
         if self.waypoint_index == len(self.route):
@@ -161,6 +191,27 @@ class PathFollow(Node):
             self.traj_file.flush()
             self.meas_file.flush()
             self.get_logger().info(f'Goal reached. Results in {self.run_dir}')
+
+    def status(self, now, x, y, theta):
+        """One line every 2 s so a log always shows what the robot was doing."""
+        doing = 'turning' if self.v == 0.0 and self.w != 0.0 else \
+            'driving' if self.v != 0.0 else 'stopped'
+        self.frames_recent = self.frames
+        self.get_logger().info(
+            f'[{now - self.start_time:5.1f} s] waypoint {self.waypoint_index + 1}/{len(self.route)}, '
+            f'at ({x:.2f}, {y:.2f}) facing {math.degrees(theta):.0f} deg, {doing}; '
+            f'camera frames {self.frames}, tags seen {self.seen or "none"}')
+        self.frames, self.seen, self.last_status = 0, {}, now
+        for f in (self.traj_file, self.meas_file):
+            f.flush()
+            os.fsync(f.fileno())  # on disk even if the power is cut
+
+    def give_up(self, reason):
+        self.finished = True
+        self.drive(0.0, 0.0)
+        self.get_logger().error(f'STOPPED: {reason}')
+        with open(os.path.join(self.run_dir, 'stopped.txt'), 'w') as f:
+            f.write(reason + '\n')
 
     def burst(self, v, w, seconds):
         self.burst_until = time.time() + seconds
