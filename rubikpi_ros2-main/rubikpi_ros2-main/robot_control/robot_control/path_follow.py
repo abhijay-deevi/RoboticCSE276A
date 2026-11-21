@@ -5,8 +5,9 @@
   - localization: the HW3 EKF, but with all tags already in the map and held fixed,
     so camera readings only correct the robot's pose. With no tags in view it keeps going
     on the wheel model (floor-tested in HW3), so short camera range doesn't stop it.
-  - drives smoothly toward each waypoint, steering as it goes; one turn in place only when
-    the next waypoint is off at a sharp angle
+  - drives smoothly toward each waypoint, steering as it goes; turns in place only when the next
+    waypoint is off at a sharp angle, in short bursts (the turn rate was measured with bursts;
+    one long turn spins much faster and overshoots)
   - logs go to ~/hw4_runs/<path>_<date_time>/
 """
 
@@ -28,7 +29,7 @@ from robot_control.ekf_slam import EkfSlam, wrap
 from robot_control.path_planner import load_map, plan, path_length
 # same floor-tested driving settings and noise as HW3
 from robot_control.slam_drive import (DRIVE_COMMAND, DRIVE_SPEED, TURN_STRENGTH, TURN_RATE,
-                                      POSITION_TOLERANCE, HEADING_GAIN, START_DELAY, DT,
+                                      TURN_BURST, POSITION_TOLERANCE, HEADING_GAIN, START_DELAY, DT,
                                       CAMERA_OFFSET, SPEED_NOISE, TURN_NOISE, MEAS_NOISE,
                                       MEAS_NOISE_PER_M, OUTLIER_GATE)
 
@@ -37,7 +38,7 @@ START_ANGLE_STD = math.radians(3)  # and about 3 degrees
 TURN_IN_PLACE = math.radians(30)   # next waypoint further off than this: stop and turn to it first
 LINED_UP = math.radians(5)         # after a turn in place, good enough to start driving
 MAX_STEER = 0.5                    # rad/s of steering allowed while driving
-SETTLE = 0.3                       # seconds still after a turn in place
+SETTLE = 0.4                       # seconds still after each turn burst
 
 
 class PathFollow(Node):
@@ -162,8 +163,8 @@ class PathFollow(Node):
 
         stopped = self.v == 0.0
         if abs(angle_error) > TURN_IN_PLACE or (stopped and abs(angle_error) > LINED_UP):
-            # one turn in place, timed with the floor-tested turn rate
-            self.turn_until = now + abs(angle_error) / TURN_RATE
+            # turn in place in short bursts, like the floor test that measured TURN_RATE
+            self.turn_until = now + max(DT, min(TURN_BURST, abs(angle_error) / TURN_RATE))
             self.drive(0.0, math.copysign(TURN_RATE, angle_error))
             return
         steer = max(-MAX_STEER, min(MAX_STEER, HEADING_GAIN * angle_error))
