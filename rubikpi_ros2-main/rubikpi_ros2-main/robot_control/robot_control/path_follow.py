@@ -131,13 +131,16 @@ class PathFollow(Node):
             self.drive(0.0, 0.0)
             return
         now = time.time()
+        # keep sending commands every loop: motor_control stops the wheels after 0.15 s of silence
         if now < self.turn_until:
-            return  # turning in place: keep going
+            self.drive(self.v, self.w)  # turning in place: keep going
+            return
         if self.v == 0.0 and self.w != 0.0:
             self.settle_until = now + SETTLE  # turn just ended
             self.drive(0.0, 0.0)
             return
         if now < self.settle_until:
+            self.drive(0.0, 0.0)
             return
 
         goal_x, goal_y = self.route[self.waypoint_index]
@@ -153,6 +156,8 @@ class PathFollow(Node):
                 self.finished = True
                 self.drive(0.0, 0.0)
                 self.get_logger().info(f'Goal reached. Results in {self.run_dir}')
+            else:
+                self.drive(self.v, self.w)
             return
 
         stopped = self.v == 0.0
