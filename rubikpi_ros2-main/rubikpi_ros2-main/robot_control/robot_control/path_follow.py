@@ -3,11 +3,8 @@
   - plans with path_planner.py: path:=safe (Voronoi + A*) or path:=short (visibility graph + A*)
   - knows where every tag is (hw4_map.yaml) and starts at the measured start pose
   - localization: the HW3 EKF, but with all tags already in the map and held fixed,
-    so camera readings only correct the robot's pose. With no tags in view it keeps going
-    on the wheel model (floor-tested in HW3), so short camera range doesn't stop it.
-  - drives smoothly toward each waypoint, steering as it goes; turns in place only when the next
-    waypoint is off at a sharp angle, in short bursts (the turn rate was measured with bursts;
-    one long turn spins much faster and overshoots)
+    so camera readings only correct the robot's pose
+  - drives in the same short bursts as HW3: turn until facing the next waypoint, drive, stop, repeat
   - logs go to ~/hw4_runs/<path>_<date_time>/
 """
 
@@ -29,16 +26,13 @@ from robot_control.ekf_slam import EkfSlam, wrap
 from robot_control.path_planner import load_map, plan, path_length
 # same floor-tested driving settings and noise as HW3
 from robot_control.slam_drive import (DRIVE_COMMAND, DRIVE_SPEED, TURN_STRENGTH, TURN_RATE,
-                                      TURN_BURST, POSITION_TOLERANCE, HEADING_GAIN, START_DELAY, DT,
+                                      POSITION_TOLERANCE, TURN_DONE, DRIVE_BURST, TURN_BURST,
+                                      REST, HEADING_GAIN, START_DELAY, CORNER_PAUSE, DT,
                                       CAMERA_OFFSET, SPEED_NOISE, TURN_NOISE, MEAS_NOISE,
                                       MEAS_NOISE_PER_M, OUTLIER_GATE)
 
 START_POSITION_STD = 0.03          # robot placed by hand: within about 3 cm
 START_ANGLE_STD = math.radians(3)  # and about 3 degrees
-TURN_IN_PLACE = math.radians(30)   # next waypoint further off than this: stop and turn to it first
-LINED_UP = math.radians(5)         # after a turn in place, good enough to start driving
-MAX_STEER = 0.5                    # rad/s of steering allowed while driving
-SETTLE = 0.4                       # seconds still after each turn burst
 
 
 class PathFollow(Node):
@@ -61,8 +55,9 @@ class PathFollow(Node):
 
         self.waypoint_index = 0
         self.v, self.w = 0.0, 0.0
-        self.turn_until = 0.0      # end of the current turn in place
-        self.settle_until = 0.0
+        self.burst_until = 0.0
+        self.rest_until = 0.0
+        self.pause_until = 0.0
         self.camera_up_time = None
         self.started = False
         self.finished = False
@@ -112,7 +107,7 @@ class PathFollow(Node):
             self.meas_file.write(f'{time.time() - self.start_time:.2f},{det.id},'
                                  f'{forward:.4f},{left:.4f},{result}\n')
 
-    # ---------------- Control loop ----------------
+    # ---------------- Control loop (same burst driving as HW3) ----------------
 
     def loop(self):
         if not self.started:
@@ -132,43 +127,44 @@ class PathFollow(Node):
             self.drive(0.0, 0.0)
             return
         now = time.time()
-        # keep sending commands every loop: motor_control stops the wheels after 0.15 s of silence
-        if now < self.turn_until:
-            self.drive(self.v, self.w)  # turning in place: keep going
+        if now < self.burst_until:
+            self.drive(self.v, self.w)
             return
-        if self.v == 0.0 and self.w != 0.0:
-            self.settle_until = now + SETTLE  # turn just ended
+        if self.v != 0.0 or self.w != 0.0:
+            self.rest_until = now + REST
             self.drive(0.0, 0.0)
             return
-        if now < self.settle_until:
+        if now < self.rest_until or now < self.pause_until:
             self.drive(0.0, 0.0)
             return
 
         goal_x, goal_y = self.route[self.waypoint_index]
         distance = math.hypot(goal_x - x, goal_y - y)
-        angle_error = wrap(math.atan2(goal_y - y, goal_x - x) - theta)
-
-        # Reached the waypoint (or just passed it): on to the next one without stopping
-        if distance < POSITION_TOLERANCE or (distance < 0.15 and abs(angle_error) > math.pi / 2):
-            self.get_logger().info(f'Waypoint {self.waypoint_index + 1}/{len(self.route)} '
-                                   f'reached at ({x:.2f}, {y:.2f})')
-            self.waypoint_index += 1
-            if self.waypoint_index == len(self.route):
-                self.finished = True
-                self.drive(0.0, 0.0)
-                self.get_logger().info(f'Goal reached. Results in {self.run_dir}')
+        if distance > POSITION_TOLERANCE:
+            angle_error = wrap(math.atan2(goal_y - y, goal_x - x) - theta)
+            if abs(angle_error) > TURN_DONE:
+                seconds = max(DT, min(TURN_BURST, abs(angle_error) / TURN_RATE))
+                self.burst(0.0, math.copysign(TURN_RATE, angle_error), seconds)
             else:
-                self.drive(self.v, self.w)
+                seconds = max(0.1, min(DRIVE_BURST, distance / DRIVE_SPEED))
+                self.burst(DRIVE_SPEED, HEADING_GAIN * angle_error, seconds)
             return
 
-        stopped = self.v == 0.0
-        if abs(angle_error) > TURN_IN_PLACE or (stopped and abs(angle_error) > LINED_UP):
-            # turn in place in short bursts, like the floor test that measured TURN_RATE
-            self.turn_until = now + max(DT, min(TURN_BURST, abs(angle_error) / TURN_RATE))
-            self.drive(0.0, math.copysign(TURN_RATE, angle_error))
-            return
-        steer = max(-MAX_STEER, min(MAX_STEER, HEADING_GAIN * angle_error))
-        self.drive(DRIVE_SPEED, steer)
+        # Reached a waypoint
+        self.get_logger().info(f'Waypoint {self.waypoint_index + 1}/{len(self.route)} reached '
+                               f'at ({x:.2f}, {y:.2f})')
+        self.waypoint_index += 1
+        self.pause_until = time.time() + CORNER_PAUSE
+        self.drive(0.0, 0.0)
+        if self.waypoint_index == len(self.route):
+            self.finished = True
+            self.traj_file.flush()
+            self.meas_file.flush()
+            self.get_logger().info(f'Goal reached. Results in {self.run_dir}')
+
+    def burst(self, v, w, seconds):
+        self.burst_until = time.time() + seconds
+        self.drive(v, w)
 
     def drive(self, v, w):
         self.v, self.w = v, w
