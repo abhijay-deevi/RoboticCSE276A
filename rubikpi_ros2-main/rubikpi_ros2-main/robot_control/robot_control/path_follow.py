@@ -4,7 +4,9 @@
   - knows where every tag is (hw4_map.yaml) and starts at the measured start pose
   - localization: the HW3 EKF, but with all tags already in the map and held fixed,
     so camera readings only correct the robot's pose
-  - drives in the same short bursts as HW3: turn until facing the next waypoint, drive, stop, repeat
+  - turns in short bursts (rate from the turn test) with a pause after each so the camera gets
+    fresh frames, then drives straight continuously, steering as it goes
+  - stops and says why if it sees no tags or makes no progress for 20 s
   - logs go to ~/hw4_runs/<path>_<date_time>/
 """
 
@@ -27,7 +29,7 @@ from robot_control.path_planner import load_map, plan, path_length
 # same floor-tested driving settings and noise as HW3
 from robot_control.slam_drive import (DRIVE_COMMAND, DRIVE_SPEED, TURN_STRENGTH,
                                       POSITION_TOLERANCE, DRIVE_BURST, TURN_BURST,
-                                      REST, HEADING_GAIN, START_DELAY, CORNER_PAUSE, DT,
+                                      REST, HEADING_GAIN, START_DELAY, DT,
                                       CAMERA_OFFSET, SPEED_NOISE, TURN_NOISE, MEAS_NOISE,
                                       MEAS_NOISE_PER_M, OUTLIER_GATE)
 
@@ -160,15 +162,17 @@ class PathFollow(Node):
         if now < self.burst_until:
             self.drive(self.v, self.w)
             return
-        if self.v != 0.0 or self.w != 0.0:
-            if self.v == 0.0:
-                self.turn_end_ns = self.get_clock().now().nanoseconds
+        if self.v == 0.0 and self.w != 0.0:
+            # a turn burst just ended: stop so the camera gets fresh, sharp frames
+            self.turn_end_ns = self.get_clock().now().nanoseconds
             self.rest_until = now + REST
             self.drive(0.0, 0.0)
             return
         if now < self.rest_until or now < self.pause_until:
             self.drive(0.0, 0.0)
             return
+        # (a drive burst that just ended rolls straight into the next one: every restart from a
+        # stop draws a current surge, and the robot's computer was browning out on those)
 
         goal_x, goal_y = self.route[self.waypoint_index]
         distance = math.hypot(goal_x - x, goal_y - y)
@@ -179,6 +183,11 @@ class PathFollow(Node):
             # small errors are fixed by steering while driving; a tiny turn in place doesn't
             # move the wheels at all, so it would just repeat forever
             if abs(angle_error) > TURN_IN_PLACE:
+                if self.v != 0.0:
+                    # still rolling: stop first (the turn rate was measured from a standstill)
+                    self.rest_until = now + REST
+                    self.drive(0.0, 0.0)
+                    return
                 seconds = max(MIN_TURN, min(TURN_BURST, abs(angle_error) / TURN_RATE))
                 self.burst(0.0, math.copysign(TURN_RATE, angle_error), seconds)
             else:
@@ -191,9 +200,10 @@ class PathFollow(Node):
                                f'at ({x:.2f}, {y:.2f})')
         self.waypoint_index += 1
         self.best_distance, self.progress_time = math.inf, now
-        self.pause_until = time.time() + CORNER_PAUSE
-        self.drive(0.0, 0.0)
-        if self.waypoint_index == len(self.route):
+        if self.waypoint_index < len(self.route):
+            self.drive(self.v, self.w)  # keep rolling; it stops on its own if the next leg needs a turn
+        else:
+            self.drive(0.0, 0.0)
             self.finished = True
             self.traj_file.flush()
             self.meas_file.flush()
