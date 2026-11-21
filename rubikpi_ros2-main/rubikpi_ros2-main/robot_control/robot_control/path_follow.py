@@ -70,7 +70,7 @@ class PathFollow(Node):
         self.seen = {}
         self.last_seen_time = time.time()
         self.last_status = 0.0
-        self.turn_end = Time()  # when the last turn in place finished (camera images before it are stale)
+        self.turn_end_ns = 0  # when the last turn in place finished (camera images before it are stale)
         self.best_distance = math.inf
         self.progress_time = time.time()
 
@@ -111,7 +111,7 @@ class PathFollow(Node):
                 self.seen[det.id] = self.seen.get(det.id, 0) + 1
         if self.v == 0.0 and self.w != 0.0:
             return  # turning in place: blurry, late images
-        if Time.from_msg(msg.header.stamp) < self.turn_end:
+        if Time.from_msg(msg.header.stamp).nanoseconds < self.turn_end_ns:
             return  # image was taken before the last turn finished: it would undo the turn
         for det in msg.detections:
             if det.id not in self.ekf.ids:
@@ -160,7 +160,7 @@ class PathFollow(Node):
             return
         if self.v != 0.0 or self.w != 0.0:
             if self.v == 0.0:
-                self.turn_end = self.get_clock().now()
+                self.turn_end_ns = self.get_clock().now().nanoseconds
             self.rest_until = now + REST
             self.drive(0.0, 0.0)
             return
