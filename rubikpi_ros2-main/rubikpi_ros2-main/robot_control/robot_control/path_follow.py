@@ -3,12 +3,10 @@
   - plans with path_planner.py: path:=safe (Voronoi + A*) or path:=short (visibility graph + A*)
   - knows where every tag is (hw4_map.yaml) and starts at the measured start pose
   - localization: the HW3 EKF, but with all tags already in the map and held fixed,
-    so camera readings only correct the robot's pose
-  - drives in the same short bursts as HW3: turn until facing the next waypoint, drive, stop, repeat
-  - far tags are often too small/dark to read, so when there has been no good reading for a few
-    seconds, it turns to face the closest tag it should be able to see (it knows where they all
-    are), waits for a reading, then carries on
-  - stops if the camera goes quiet
+    so camera readings only correct the robot's pose. With no tags in view it keeps going
+    on the wheel model (floor-tested in HW3), so short camera range doesn't stop it.
+  - drives smoothly toward each waypoint, steering as it goes; one turn in place only when
+    the next waypoint is off at a sharp angle
   - logs go to ~/hw4_runs/<path>_<date_time>/
 """
 
@@ -27,19 +25,19 @@ from tf2_ros import Buffer, TransformListener
 from ament_index_python.packages import get_package_share_directory
 
 from robot_control.ekf_slam import EkfSlam, wrap
-from robot_control.path_planner import load_map, plan, path_length, segment_clear
+from robot_control.path_planner import load_map, plan, path_length
 # same floor-tested driving settings and noise as HW3
 from robot_control.slam_drive import (DRIVE_COMMAND, DRIVE_SPEED, TURN_STRENGTH, TURN_RATE,
-                                      POSITION_TOLERANCE, TURN_DONE, DRIVE_BURST, TURN_BURST,
-                                      REST, HEADING_GAIN, START_DELAY, CORNER_PAUSE, DT,
+                                      POSITION_TOLERANCE, HEADING_GAIN, START_DELAY, DT,
                                       CAMERA_OFFSET, SPEED_NOISE, TURN_NOISE, MEAS_NOISE,
                                       MEAS_NOISE_PER_M, OUTLIER_GATE)
 
 START_POSITION_STD = 0.03          # robot placed by hand: within about 3 cm
 START_ANGLE_STD = math.radians(3)  # and about 3 degrees
-FIX_AGE = 3.0         # no good tag reading for this long -> go look at the closest tag
-LOOK_TIMEOUT = 6.0    # give up looking after this long and keep going
-CAMERA_TIMEOUT = 2.0  # no camera frames for this long -> stop and wait
+TURN_IN_PLACE = math.radians(30)   # next waypoint further off than this: stop and turn to it first
+LINED_UP = math.radians(5)         # after a turn in place, good enough to start driving
+MAX_STEER = 0.5                    # rad/s of steering allowed while driving
+SETTLE = 0.3                       # seconds still after a turn in place
 
 
 class PathFollow(Node):
@@ -49,7 +47,6 @@ class PathFollow(Node):
 
         m = load_map(os.path.join(get_package_share_directory('robot_control'),
                                   'config', 'hw4_map.yaml'))
-        self.map = m
         self.route = plan(m, self.kind)[1:]  # first point is the start itself
 
         # EKF with the known map: robot at the measured start, every tag fixed in place
@@ -63,14 +60,9 @@ class PathFollow(Node):
 
         self.waypoint_index = 0
         self.v, self.w = 0.0, 0.0
-        self.burst_until = 0.0
-        self.rest_until = 0.0
-        self.pause_until = 0.0
+        self.turn_until = 0.0      # end of the current turn in place
+        self.settle_until = 0.0
         self.camera_up_time = None
-        self.last_frame_time = None
-        self.last_fix_time = 0.0    # last accepted tag reading
-        self.look_tag = None        # tag we turned to look at, if any
-        self.look_started = 0.0
         self.started = False
         self.finished = False
 
@@ -104,7 +96,6 @@ class PathFollow(Node):
     def on_detections(self, msg):
         if self.camera_up_time is None:
             self.camera_up_time = time.time()
-        self.last_frame_time = time.time()
         if self.v == 0.0 and self.w != 0.0:
             return  # turning in place: blurry, late images
         for det in msg.detections:
@@ -117,31 +108,10 @@ class PathFollow(Node):
             forward = t.transform.translation.z + CAMERA_OFFSET
             left = -t.transform.translation.x
             result = self.ekf.update(det.id, forward, left)
-            if result == 'updated':
-                self.last_fix_time = time.time()
             self.meas_file.write(f'{time.time() - self.start_time:.2f},{det.id},'
                                  f'{forward:.4f},{left:.4f},{result}\n')
 
-    def closest_visible_tag(self, x, y):
-        """Closest tag the camera should be able to see from (x, y): the box isn't in the way,
-        and for tags on the box, the robot is on the side that tag faces."""
-        b = self.map['box']
-        half = b['size'] / 2 - 0.01  # line of sight may touch the face the tag is on
-        box = (b['x'] - half, b['y'] - half, b['x'] + half, b['y'] + half)
-        best, best_d = None, math.inf
-        for tag_id, t in self.map['tags'].items():
-            on_box = abs(t['x'] - b['x']) <= b['size'] / 2 + 0.01 and \
-                abs(t['y'] - b['y']) <= b['size'] / 2 + 0.01
-            if on_box and (x - t['x']) * (t['x'] - b['x']) + (y - t['y']) * (t['y'] - b['y']) <= 0:
-                continue  # robot is behind this face of the box
-            if not segment_clear((x, y), (t['x'], t['y']), box, self.map['room'], 0.0):
-                continue
-            d = math.hypot(t['x'] - x, t['y'] - y)
-            if d < best_d:
-                best, best_d = tag_id, d
-        return best
-
-    # ---------------- Control loop (same burst driving as HW3) ----------------
+    # ---------------- Control loop ----------------
 
     def loop(self):
         if not self.started:
@@ -161,68 +131,38 @@ class PathFollow(Node):
             self.drive(0.0, 0.0)
             return
         now = time.time()
-        if now < self.burst_until:
-            self.drive(self.v, self.w)
-            return
-        if self.v != 0.0 or self.w != 0.0:
-            self.rest_until = now + REST
+        if now < self.turn_until:
+            return  # turning in place: keep going
+        if self.v == 0.0 and self.w != 0.0:
+            self.settle_until = now + SETTLE  # turn just ended
             self.drive(0.0, 0.0)
             return
-        if now < self.rest_until or now < self.pause_until:
-            self.drive(0.0, 0.0)
+        if now < self.settle_until:
             return
-        if now - self.last_frame_time > CAMERA_TIMEOUT:
-            self.drive(0.0, 0.0)  # camera went quiet: don't drive blind
-            self.get_logger().warn('No camera frames, waiting...', throttle_duration_sec=2.0)
-            return
-
-        # Been a while since a good reading: turn to face the closest tag and wait for one
-        if self.look_tag is None and now - self.last_fix_time > FIX_AGE:
-            self.look_tag = self.closest_visible_tag(x, y)
-            self.look_started = now
-            if self.look_tag is None:
-                self.last_fix_time = now  # nothing to look at from here: drive on for a bit
-            else:
-                self.get_logger().info(f'No recent tag reading, looking at tag {self.look_tag}')
-        if self.look_tag is not None:
-            if self.last_fix_time > self.look_started or now - self.look_started > LOOK_TIMEOUT:
-                self.look_tag = None  # got a fresh reading (or gave up): back to the path
-                self.last_fix_time = max(self.last_fix_time, now)
-            else:
-                t = self.map['tags'][self.look_tag]
-                angle_error = wrap(math.atan2(t['y'] - y, t['x'] - x) - theta)
-                if abs(angle_error) > TURN_DONE:
-                    seconds = max(DT, min(TURN_BURST, abs(angle_error) / TURN_RATE))
-                    self.burst(0.0, math.copysign(TURN_RATE, angle_error), seconds)
-                return  # facing it: stand still until a reading comes in
 
         goal_x, goal_y = self.route[self.waypoint_index]
         distance = math.hypot(goal_x - x, goal_y - y)
-        if distance > POSITION_TOLERANCE:
-            angle_error = wrap(math.atan2(goal_y - y, goal_x - x) - theta)
-            if abs(angle_error) > TURN_DONE:
-                seconds = max(DT, min(TURN_BURST, abs(angle_error) / TURN_RATE))
-                self.burst(0.0, math.copysign(TURN_RATE, angle_error), seconds)
-            else:
-                seconds = max(0.1, min(DRIVE_BURST, distance / DRIVE_SPEED))
-                self.burst(DRIVE_SPEED, HEADING_GAIN * angle_error, seconds)
+        angle_error = wrap(math.atan2(goal_y - y, goal_x - x) - theta)
+
+        # Reached the waypoint (or just passed it): on to the next one without stopping
+        if distance < POSITION_TOLERANCE or (distance < 0.15 and abs(angle_error) > math.pi / 2):
+            self.get_logger().info(f'Waypoint {self.waypoint_index + 1}/{len(self.route)} '
+                                   f'reached at ({x:.2f}, {y:.2f})')
+            self.waypoint_index += 1
+            if self.waypoint_index == len(self.route):
+                self.finished = True
+                self.drive(0.0, 0.0)
+                self.get_logger().info(f'Goal reached. Results in {self.run_dir}')
             return
 
-        # Reached a waypoint
-        self.get_logger().info(f'Waypoint {self.waypoint_index + 1}/{len(self.route)} reached '
-                               f'at ({x:.2f}, {y:.2f})')
-        self.waypoint_index += 1
-        self.pause_until = time.time() + CORNER_PAUSE
-        self.drive(0.0, 0.0)
-        if self.waypoint_index == len(self.route):
-            self.finished = True
-            self.traj_file.flush()
-            self.meas_file.flush()
-            self.get_logger().info(f'Goal reached. Results in {self.run_dir}')
-
-    def burst(self, v, w, seconds):
-        self.burst_until = time.time() + seconds
-        self.drive(v, w)
+        stopped = self.v == 0.0
+        if abs(angle_error) > TURN_IN_PLACE or (stopped and abs(angle_error) > LINED_UP):
+            # one turn in place, timed with the floor-tested turn rate
+            self.turn_until = now + abs(angle_error) / TURN_RATE
+            self.drive(0.0, math.copysign(TURN_RATE, angle_error))
+            return
+        steer = max(-MAX_STEER, min(MAX_STEER, HEADING_GAIN * angle_error))
+        self.drive(DRIVE_SPEED, steer)
 
     def drive(self, v, w):
         self.v, self.w = v, w
