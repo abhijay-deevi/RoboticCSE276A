@@ -1,26 +1,23 @@
-# HW4 map, in meters. 9 ft x 9 ft area, origin at the corner by tags 1 and 2.
-# x runs along the wall with tags 1 and 0, y along the wall with tags 2 and 3.
-# Wall tags are 1.5 ft from each corner. The box tags are centered on each face.
+# this is for homework 4
+room: 2.7432 # sets up the square or walls
+box: {x: 1.3716, y: 1.3716, size: 0.3556} # this is the box in the middle converted from 14 inch
 
-room: 2.7432                 # 9 ft square
-box: {x: 1.3716, y: 1.3716, size: 0.3556}   # 14 in box in the middle
+robot_radius: 0.1167 # turn radius
+margin: 0.0762               
 
-robot_radius: 0.1167         # half the diagonal of the 6.5 in x 6.5 in robot (what it sweeps when turning)
-margin: 0.0762               # 3 in of extra room on top of that
+start: {x: 2.286, y: 0.4572, theta: 1.5708}
+goal:  {x: 0.4572, y: 2.286}
 
-start: {x: 2.286, y: 0.4572, theta: 1.5708}  # 1.5 ft from the tag 1/0 and tag 7/6 walls, facing the tag 4/5 wall
-goal:  {x: 0.4572, y: 2.286}                 # 1.5 ft from the tag 2/3 and tag 4/5 walls
-
-tags:
-  1:  {x: 0.4572, y: 0.0}      # wall with tags 1, 0
+tags: # this is where all the tags end up in our graph 
+  1:  {x: 0.4572, y: 0.0}
   0:  {x: 2.286,  y: 0.0}
-  7:  {x: 2.7432, y: 0.4572}   # wall with tags 7, 6
+  7:  {x: 2.7432, y: 0.4572}
   6:  {x: 2.7432, y: 2.286}
-  5:  {x: 2.286,  y: 2.7432}   # wall with tags 5, 4
+  5:  {x: 2.286,  y: 2.7432}
   4:  {x: 0.4572, y: 2.7432}
-  3:  {x: 0.0,    y: 2.286}    # wall with tags 3, 2
+  3:  {x: 0.0,    y: 2.286}
   2:  {x: 0.0,    y: 0.4572}
-  8:  {x: 1.3716, y: 1.1938}   # box face toward the tag 1/0 wall
-  9:  {x: 1.1938, y: 1.3716}   # box face toward the tag 2/3 wall
-  10: {x: 1.3716, y: 1.5494}   # box face toward the tag 4/5 wall
-  11: {x: 1.5494, y: 1.3716}   # box face toward the tag 7/6 wall
+  8:  {x: 1.3716, y: 1.1938}
+  9:  {x: 1.1938, y: 1.3716}
+  10: {x: 1.3716, y: 1.5494} 
+  11: {x: 1.5494, y: 1.3716}
