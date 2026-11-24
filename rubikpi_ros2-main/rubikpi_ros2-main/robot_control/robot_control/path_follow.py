@@ -1,15 +1,3 @@
-"""HW4: plan a path from start to goal and drive it.
-
-  - plans with path_planner.py: path:=safe (Voronoi + A*) or path:=short (visibility graph + A*)
-  - knows where every tag is (hw4_map.yaml) and starts at the measured start pose
-  - localization: the HW3 EKF, but with all tags already in the map and held fixed,
-    so camera readings only correct the robot's pose
-  - turns in short bursts (rate from the turn test) with a pause after each so the camera gets
-    fresh frames, then drives straight continuously, steering as it goes
-  - stops and says why if it sees no tags or makes no progress for 20 s
-  - logs go to ~/hw4_runs/<path>_<date_time>/
-"""
-
 import math
 import os
 import time
@@ -86,7 +74,7 @@ class PathFollow(Node):
             f.write('x,y\n')
             for x, y in [(s['x'], s['y'])] + self.route:
                 f.write(f'{x:.4f},{y:.4f}\n')
-        # line-buffered so nothing is lost if the run is cut short
+        # keep writing if computer crash
         self.traj_file = open(os.path.join(self.run_dir, 'trajectory.csv'), 'w', buffering=1)
         self.traj_file.write('time,waypoint,x,y,theta,v,w\n')
         self.meas_file = open(os.path.join(self.run_dir, 'measurements.csv'), 'w', buffering=1)
@@ -104,7 +92,7 @@ class PathFollow(Node):
             f'{path_length([(s["x"], s["y"])] + self.route):.2f} m. '
             f'Logging to {self.run_dir}. Waiting for camera...')
 
-    # ---------------- Measurements ----------------
+    # MEASUREMENT BELOW
 
     def on_detections(self, msg):
         if self.camera_up_time is None:
@@ -115,9 +103,9 @@ class PathFollow(Node):
                 self.last_seen_time = time.time()
                 self.seen[det.id] = self.seen.get(det.id, 0) + 1
         if self.v == 0.0 and self.w != 0.0:
-            return  # turning in place: blurry, late images
+            return  # turning in place
         if Time.from_msg(msg.header.stamp).nanoseconds < self.turn_end_ns:
-            return  # image was taken before the last turn finished: it would undo the turn
+            return  # image was taken before the last turn finished
         for det in msg.detections:
             if det.id not in self.ekf.ids:
                 continue  # not a tag from our map
@@ -131,7 +119,7 @@ class PathFollow(Node):
             self.meas_file.write(f'{time.time() - self.start_time:.2f},{det.id},'
                                  f'{forward:.4f},{left:.4f},{result}\n')
 
-    # ---------------- Control loop (same burst driving as HW3) ----------------
+    # hw 3 copy
 
     def loop(self):
         if not self.started:
@@ -172,8 +160,6 @@ class PathFollow(Node):
         if now < self.rest_until or now < self.pause_until:
             self.drive(0.0, 0.0)
             return
-        # (a drive burst that just ended rolls straight into the next one: every restart from a
-        # stop draws a current surge, and the robot's computer was browning out on those)
 
         goal_x, goal_y = self.route[self.waypoint_index]
         distance = math.hypot(goal_x - x, goal_y - y)
@@ -181,11 +167,10 @@ class PathFollow(Node):
             self.best_distance, self.progress_time = distance, now
         if distance > POSITION_TOLERANCE:
             angle_error = wrap(math.atan2(goal_y - y, goal_x - x) - theta)
-            # small errors are fixed by steering while driving; a tiny turn in place doesn't
-            # move the wheels at all, so it would just repeat forever
+            # steeing in place
             if abs(angle_error) > TURN_IN_PLACE:
                 if self.v != 0.0:
-                    # still rolling: stop first (the turn rate was measured from a standstill)
+                    # still rolling
                     self.rest_until = now + REST
                     self.drive(0.0, 0.0)
                     return
@@ -202,7 +187,7 @@ class PathFollow(Node):
         self.waypoint_index += 1
         self.best_distance, self.progress_time = math.inf, now
         if self.waypoint_index < len(self.route):
-            self.drive(self.v, self.w)  # keep rolling; it stops on its own if the next leg needs a turn
+            self.drive(self.v, self.w)  # keep rolling
         else:
             self.drive(0.0, 0.0)
             self.finished = True
@@ -256,7 +241,7 @@ def main(args=None):
     try:
         node.drive(0.0, 0.0)
     except Exception:
-        pass  # already shut down; motor_control stops the wheels 0.15 s after commands stop
+        pass  # already shut down
     node.destroy_node()
     if rclpy.ok():
         rclpy.shutdown()
